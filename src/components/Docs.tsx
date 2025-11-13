@@ -1782,7 +1782,7 @@ export default function Docs({ changelogOpen = false, onOpenChange }: DocsProps)
             setIsOpen(true);
             onOpenChange?.(true);
           }}
-          className="fixed bottom-20 sm:bottom-6 left-6 sm:left-52 z-40 bg-orange-500 text-white rounded-full p-3 sm:p-4 shadow-2xl hover:bg-orange-600 transition-all flex items-center gap-2 group"
+          className="fixed bottom-16 sm:bottom-6 left-4 sm:left-52 z-40 bg-orange-500 text-white rounded-full p-2.5 sm:p-3 md:p-4 shadow-2xl hover:bg-orange-600 transition-all flex items-center gap-1.5 sm:gap-2 group"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.1 }}

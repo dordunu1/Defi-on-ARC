@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowDownUp, Settings, Info, ChevronDown, AlertCircle, CheckCircle2, Loader2, X, Search, Copy } from 'lucide-react';
+import { ArrowDownUp, Settings, Info, ChevronDown, AlertCircle, CheckCircle2, Loader2, X, Search, Copy, ArrowRight } from 'lucide-react';
 import { useAccount, usePublicClient, useReadContract } from 'wagmi';
 import { useDEX, useTokenBalance, useSwapOutput, useTokenAllowance, usePoolReserves, TOKENS, type TokenSymbol, usePoolAddress, useTokenBalanceByAddress } from '../hooks/useDEX';
 import { ERC20_ABI, POOL_ABI } from '../config/abis';
@@ -1350,111 +1350,385 @@ export default function Swap() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
               onClick={() => setShowReviewModal(false)}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
+                initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.8, opacity: 0, y: 20 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+                className="relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 max-w-2xl w-full mx-4 border border-white/30 overflow-hidden max-h-[90vh] overflow-y-auto"
                 style={{
                   boxShadow: `
-                    0 0 30px rgba(251, 146, 60, 0.25),
-                    0 0 60px rgba(251, 146, 60, 0.15),
-                    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-                    0 4px 6px -2px rgba(0, 0, 0, 0.05),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.9)
-                  `
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                    inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+                    0 0 30px rgba(251, 146, 60, 0.15),
+                    0 0 60px rgba(251, 146, 60, 0.1),
+                    0 10px 30px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
                 }}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900">Review swap</h3>
-                  <button
-                    onClick={() => setShowReviewModal(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
+                {/* Close Button */}
+                <button
+                  onClick={() => setShowReviewModal(false)}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
 
-                <div className="space-y-6">
+                {/* Header */}
+                <motion.h3
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 text-center mb-4 sm:mb-6 md:mb-8"
+                >
+                  Review swap
+                </motion.h3>
+
+                <div className="space-y-4 sm:space-y-6">
                   {/* You Pay */}
-                  <div>
-                    <p className="text-xs text-gray-500 mb-2">You pay</p>
-                    <div className="flex items-center justify-between">
-                      <p className="text-2xl font-bold text-gray-900">{fromAmount} {getTokenDisplay(fromToken).symbol}</p>
-                      <TokenLogo 
-                        token={typeof fromToken === 'string' && isAddress(fromToken) ? getTokenDisplay(fromToken).symbol : fromToken} 
-                        size={40}
-                        address={typeof fromToken === 'string' && isAddress(fromToken) ? fromToken : undefined}
-                      />
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="bg-white/60 backdrop-blur-lg rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/40"
+                    style={{
+                      boxShadow: `
+                        inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                        inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                        0 4px 8px rgba(0, 0, 0, 0.05)
+                      `,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">You pay</span>
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                        <TokenLogo 
+                          token={typeof fromToken === 'string' && isAddress(fromToken) ? getTokenDisplay(fromToken).symbol : fromToken} 
+                          size={28}
+                          address={typeof fromToken === 'string' && isAddress(fromToken) ? fromToken : undefined}
+                          className="drop-shadow-xl flex-shrink-0"
+                        />
+                        <span className="text-base sm:text-lg md:text-xl font-bold text-gray-900 whitespace-nowrap">
+                          {parseFloat(fromAmount).toLocaleString('en-US', {
+                            maximumFractionDigits: 6,
+                          })}{' '}
+                          {getTokenDisplay(fromToken).symbol}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1 whitespace-nowrap">
-                      Balance: {parseFloat(fromBalance).toFixed(4)} {getTokenDisplay(fromToken).symbol}
-                    </p>
-                  </div>
+                  </motion.div>
 
-                  {/* Arrow */}
-                  <div className="flex justify-center">
-                    <ArrowDownUp className="w-5 h-5 text-gray-400" />
-                  </div>
-
-                  {/* You Receive */}
-                  <div>
-                    <p className="text-xs text-gray-500 mb-2">You receive</p>
-                    <div className="flex items-center justify-between">
-                      <p className="text-2xl font-bold text-gray-900">{toAmount} {getTokenDisplay(toToken).symbol}</p>
-                      <TokenLogo 
-                        token={typeof toToken === 'string' && isAddress(toToken) ? getTokenDisplay(toToken).symbol : toToken} 
-                        size={40}
-                        address={typeof toToken === 'string' && isAddress(toToken) ? toToken : undefined}
+                  {/* Swap Route - Enhanced Visual Flow */}
+                  {swapPath && swapPath.length > 2 ? (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.3 }}
+                      className="bg-white/50 backdrop-blur-md rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5 border border-white/30 relative overflow-visible sm:overflow-hidden"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.08),
+                          0 2px 4px rgba(0, 0, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      {/* Animated background gradient */}
+                      <motion.div
+                        className="absolute inset-0 opacity-30"
+                        animate={{
+                          background: [
+                            'linear-gradient(90deg, rgba(251, 146, 60, 0.1) 0%, rgba(251, 146, 60, 0.05) 50%, rgba(251, 146, 60, 0.1) 100%)',
+                            'linear-gradient(90deg, rgba(251, 146, 60, 0.05) 0%, rgba(251, 146, 60, 0.1) 50%, rgba(251, 146, 60, 0.05) 100%)',
+                            'linear-gradient(90deg, rgba(251, 146, 60, 0.1) 0%, rgba(251, 146, 60, 0.05) 50%, rgba(251, 146, 60, 0.1) 100%)',
+                          ],
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                          ease: 'easeInOut',
+                        }}
                       />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 whitespace-nowrap">
-                      Balance: {parseFloat(toBalance).toFixed(4)} {getTokenDisplay(toToken).symbol}
-                    </p>
-                  </div>
-
-                  {/* Swap Details */}
-                  <div className="space-y-3 pt-4 border-t border-gray-200">
-                    {/* Swap Route (for multi-hop) */}
-                    {swapPath && swapPath.length > 2 && (
-                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
-                        <p className="text-xs text-gray-600 mb-2">Swap Route</p>
-                        <div className="flex items-center gap-2 flex-wrap">
+                      
+                      <div className="relative z-10">
+                        <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4 text-center font-semibold uppercase tracking-wide">Swap Route</p>
+                        
+                        {/* Enhanced token flow visualization */}
+                        <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 mb-3 sm:mb-4 overflow-x-auto pb-2 px-2 pt-2 sm:overflow-x-visible sm:pb-0 sm:px-0 sm:pt-0">
                           {swapPath.map((token, index) => (
-                            <div key={index} className="flex items-center gap-2">
-                              <div className="flex items-center gap-1">
-                                <TokenLogo token={token} size={20} />
-                                <span className="text-sm font-medium text-gray-900">{token}</span>
-                              </div>
+                            <div key={index} className="flex items-center">
+                              {/* Token Container */}
+                              <motion.div
+                                initial={{ scale: 0, rotate: -180, y: -20 }}
+                                animate={{ scale: 1, rotate: 0, y: 0 }}
+                                transition={{ 
+                                  delay: 0.4 + index * 0.15, 
+                                  type: 'spring', 
+                                  stiffness: 200,
+                                  damping: 15
+                                }}
+                                className="flex flex-col items-center gap-2 relative z-10"
+                              >
+                                {/* Token Icon with Enhanced Effects */}
+                                <div className="relative pt-2 sm:pt-0">
+                                  {/* Outer glow ring */}
+                                  <motion.div
+                                    className="absolute -inset-2 rounded-full"
+                                    animate={{
+                                      boxShadow: [
+                                        '0 0 0 0 rgba(251, 146, 60, 0.4)',
+                                        '0 0 0 4px rgba(251, 146, 60, 0.2)',
+                                        '0 0 0 0 rgba(251, 146, 60, 0.4)',
+                                      ],
+                                    }}
+                                    transition={{
+                                      duration: 2,
+                                      repeat: Infinity,
+                                      ease: 'easeInOut',
+                                    }}
+                                  />
+                                  
+                                  {/* Token circle with neumorphic effect */}
+                                  <motion.div
+                                    className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center border-2 border-orange-300/50 relative overflow-hidden flex-shrink-0"
+                                    style={{
+                                      boxShadow: `
+                                        inset 0 3px 6px rgba(255, 255, 255, 0.9),
+                                        inset 0 -3px 6px rgba(0, 0, 0, 0.1),
+                                        0 4px 12px rgba(251, 146, 60, 0.25),
+                                        0 2px 4px rgba(0, 0, 0, 0.1)
+                                      `,
+                                    }}
+                                    whileHover={{ scale: 1.1 }}
+                                    transition={{ type: 'spring', stiffness: 400 }}
+                                  >
+                                    {/* Shine effect */}
+                                    <motion.div
+                                      className="absolute inset-0 bg-gradient-to-br from-white/60 via-transparent to-transparent"
+                                      animate={{
+                                        rotate: [0, 360],
+                                      }}
+                                      transition={{
+                                        duration: 3,
+                                        repeat: Infinity,
+                                        ease: 'linear',
+                                      }}
+                                    />
+                                    <TokenLogo token={token} size={20} className="relative z-10 drop-shadow-lg sm:w-6 sm:h-6 md:w-7 md:h-7" />
+                                    
+                                    {/* Pulse effect for active token */}
+                                    {index === 0 && (
+                                      <motion.div
+                                        className="absolute inset-0 rounded-full border-2 border-orange-500"
+                                        animate={{
+                                          scale: [1, 1.2, 1],
+                                          opacity: [0.6, 0, 0.6],
+                                        }}
+                                        transition={{
+                                          duration: 1.5,
+                                          repeat: Infinity,
+                                          ease: 'easeInOut',
+                                        }}
+                                      />
+                                    )}
+                                  </motion.div>
+                                  
+                                  {/* Step number badge */}
+                                  <motion.div
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ delay: 0.5 + index * 0.15 }}
+                                    className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-[10px] sm:text-xs font-bold shadow-lg"
+                                    style={{
+                                      boxShadow: `
+                                        inset 0 1px 2px rgba(255, 255, 255, 0.5),
+                                        inset 0 -1px 2px rgba(0, 0, 0, 0.2),
+                                        0 2px 4px rgba(0, 0, 0, 0.2)
+                                      `,
+                                    }}
+                                  >
+                                    {index + 1}
+                                  </motion.div>
+                                </div>
+                                
+                                {/* Token label */}
+                                <motion.span
+                                  initial={{ opacity: 0, y: -5 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: 0.6 + index * 0.15 }}
+                                  className="text-[10px] sm:text-xs md:text-sm font-bold text-gray-800 bg-white/60 px-1.5 sm:px-2 py-0.5 rounded-full backdrop-blur-sm whitespace-nowrap"
+                                  style={{
+                                    boxShadow: `
+                                      inset 0 1px 2px rgba(255, 255, 255, 0.9),
+                                      inset 0 -1px 2px rgba(0, 0, 0, 0.1)
+                                    `,
+                                  }}
+                                >
+                                  {token}
+                                </motion.span>
+                              </motion.div>
+                              
+                              {/* Animated Connection Arrow */}
                               {index < swapPath.length - 1 && (
-                                <ArrowDownUp className="w-3 h-3 text-orange-500" />
+                                <motion.div
+                                  initial={{ opacity: 0, scaleX: 0 }}
+                                  animate={{ opacity: 1, scaleX: 1 }}
+                                  transition={{ delay: 0.55 + index * 0.15, duration: 0.4 }}
+                                  className="flex items-center mx-0.5 sm:mx-1 md:mx-2 relative flex-shrink-0"
+                                >
+                                  {/* Flowing line */}
+                                  <div className="relative w-6 sm:w-8 md:w-12 h-0.5 bg-gradient-to-r from-orange-400 via-orange-500 to-orange-400 overflow-hidden rounded-full">
+                                    <motion.div
+                                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                                      animate={{
+                                        x: ['-100%', '200%'],
+                                      }}
+                                      transition={{
+                                        duration: 1.5,
+                                        repeat: Infinity,
+                                        ease: 'linear',
+                                      }}
+                                      style={{ width: '50%' }}
+                                    />
+                                  </div>
+                                  
+                                  {/* Arrow head */}
+                                  <motion.div
+                                    initial={{ scale: 0, rotate: -90 }}
+                                    animate={{ scale: 1, rotate: 0 }}
+                                    transition={{ delay: 0.6 + index * 0.15, type: 'spring', stiffness: 300 }}
+                                    className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center ml-0.5 sm:ml-1 shadow-lg flex-shrink-0"
+                                    style={{
+                                      boxShadow: `
+                                        inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                        inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                        0 3px 8px rgba(251, 146, 60, 0.4)
+                                      `,
+                                    }}
+                                  >
+                                    <ArrowRight className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
+                                  </motion.div>
+                                </motion.div>
                               )}
                             </div>
                           ))}
                         </div>
-                        <p className="text-xs text-orange-600 mt-2">
-                          This swap will go through {swapPath.length - 1} hop{swapPath.length - 1 > 1 ? 's' : ''}
-                        </p>
+                        
+                        {/* Route summary with enhanced styling */}
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.8 }}
+                          className="bg-gradient-to-r from-orange-50/80 to-orange-100/80 backdrop-blur-sm rounded-lg sm:rounded-xl p-2 sm:p-3 border border-orange-200/50"
+                          style={{
+                            boxShadow: `
+                              inset 0 1px 2px rgba(255, 255, 255, 0.9),
+                              inset 0 -1px 2px rgba(0, 0, 0, 0.05)
+                            `,
+                          }}
+                        >
+                          <p className="text-[10px] sm:text-xs text-orange-700 text-center font-semibold">
+                            <span className="inline-block mr-1">🔄</span>
+                            {swapPath.length - 1} hop{swapPath.length - 1 > 1 ? 's' : ''} via{' '}
+                            <span className="font-bold">{swapPath.slice(1, -1).join(' → ')}</span>
+                          </p>
+                        </motion.div>
                       </div>
-                    )}
+                    </motion.div>
+                  ) : (
+                    /* Arrow for direct swap */
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+                      className="flex justify-center"
+                    >
+                      <div 
+                        className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                        style={{
+                          boxShadow: `
+                            inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                            inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                            0 4px 8px rgba(251, 146, 60, 0.3)
+                          `,
+                        }}
+                      >
+                        <ArrowRight className="w-6 h-6 text-white" />
+                      </div>
+                    </motion.div>
+                  )}
 
-                    {/* Rate */}
-                    {exchangeRate && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Rate</span>
-                        <span className="font-medium text-gray-900">
-                          1 {fromToken} = {exchangeRate.toFixed(6)} {toToken}
+                  {/* You Receive */}
+                  <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: swapPath && swapPath.length > 2 ? 0.8 : 0.4 }}
+                    className="bg-white/60 backdrop-blur-lg rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/40"
+                    style={{
+                      boxShadow: `
+                        inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                        inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                        0 4px 8px rgba(0, 0, 0, 0.05)
+                      `,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">You receive</span>
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                        <span className="text-base sm:text-lg md:text-xl font-bold text-green-600 whitespace-nowrap">
+                          {parseFloat(toAmount).toLocaleString('en-US', {
+                            maximumFractionDigits: 6,
+                          })}{' '}
+                          {getTokenDisplay(toToken).symbol}
                         </span>
+                        <TokenLogo 
+                          token={typeof toToken === 'string' && isAddress(toToken) ? getTokenDisplay(toToken).symbol : toToken} 
+                          size={28}
+                          address={typeof toToken === 'string' && isAddress(toToken) ? toToken : undefined}
+                          className="drop-shadow-xl flex-shrink-0"
+                        />
                       </div>
-                    )}
+                    </div>
+                  </motion.div>
 
+                  {/* Exchange Rate */}
+                  {exchangeRate && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: swapPath && swapPath.length > 2 ? 0.9 : 0.5 }}
+                      className="bg-white/50 backdrop-blur-md rounded-lg sm:rounded-xl p-2 sm:p-3 border border-white/30 text-center"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.08),
+                          0 2px 4px rgba(0, 0, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      <span className="text-[10px] sm:text-xs text-gray-600">Exchange rate</span>
+                      <p className="text-xs sm:text-sm font-semibold text-orange-600 mt-1 break-words">
+                        1 {getTokenDisplay(fromToken).symbol} = {exchangeRate.toFixed(6)} {getTokenDisplay(toToken).symbol}
+                      </p>
+                    </motion.div>
+                  )}
+
+                  {/* Swap Details */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: swapPath && swapPath.length > 2 ? 1 : 0.6 }}
+                    className="space-y-1.5 sm:space-y-2 pt-3 sm:pt-4 border-t border-white/30"
+                  >
                     {/* Price Impact */}
                     {priceImpact !== null && (
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-gray-600">Price impact</span>
                         <span className={`font-medium ${
                           priceImpact > 5 ? 'text-red-600' : priceImpact > 1 ? 'text-yellow-600' : 'text-gray-900'
@@ -1465,26 +1739,37 @@ export default function Swap() {
                     )}
 
                     {/* Max Slippage */}
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-xs sm:text-sm">
                       <span className="text-gray-600">Max. slippage</span>
                       <span className="font-medium text-gray-900">{slippage}%</span>
                     </div>
 
                     {/* Minimum Receive */}
                     {minReceive && parseFloat(minReceive) > 0 && (
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-gray-600">Receive at least</span>
-                        <span className="font-medium text-gray-900">
-                          {minReceive} {toToken}
+                        <span className="font-medium text-gray-900 break-words text-right">
+                          {minReceive} {getTokenDisplay(toToken).symbol}
                         </span>
                       </div>
                     )}
-                  </div>
+                  </motion.div>
 
                   {/* Confirm Button */}
                   <motion.button
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: swapPath && swapPath.length > 2 ? 1.1 : 0.7 }}
                     onClick={handleConfirmSwap}
-                    className="w-full py-4 rounded-xl font-bold text-base bg-orange-500 text-white hover:bg-orange-600 transition-all"
+                    className="w-full py-2.5 sm:py-3 px-4 sm:px-6 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg sm:rounded-xl text-sm sm:text-base font-semibold hover:from-orange-600 hover:to-orange-700 transition-all"
+                    style={{
+                      boxShadow: `
+                        inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                        0 4px 12px rgba(251, 146, 60, 0.4),
+                        0 2px 4px rgba(0, 0, 0, 0.1)
+                      `,
+                    }}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
