@@ -12,6 +12,9 @@ export function getTokenLogoPath(token: TokenSymbol | string): string {
     SRAC: '/srac.png',
     RACS: '/racs.png',
     SACS: '/sacs.png',
+    EURC: '/eurc.jpg',
+    KITTY: '/cat.png',
+    DOGG: '/dog.png',
   };
   
   return logoMap[normalizedToken] || `/srac.png`; // fallback

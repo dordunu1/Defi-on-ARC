@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowDownUp, Settings, Info, ChevronDown, AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react';
+import { ArrowDownUp, Settings, Info, ChevronDown, AlertCircle, CheckCircle2, Loader2, X, Search, Copy } from 'lucide-react';
 import { useAccount, usePublicClient, useReadContract } from 'wagmi';
-import { useDEX, useTokenBalance, useSwapOutput, useTokenAllowance, usePoolReserves, TOKENS, type TokenSymbol, usePoolAddress } from '../hooks/useDEX';
+import { useDEX, useTokenBalance, useSwapOutput, useTokenAllowance, usePoolReserves, TOKENS, type TokenSymbol, usePoolAddress, useTokenBalanceByAddress } from '../hooks/useDEX';
 import { ERC20_ABI, POOL_ABI } from '../config/abis';
-import { parseUnits, type Address } from 'viem';
+import { parseUnits, type Address, isAddress } from 'viem';
 import { getPoolAddress } from '../hooks/useDEX';
+import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 import { addArcTestnetToWallet } from '../utils/addArcTestnet';
 import PriceChart from './PriceChart';
@@ -13,29 +14,203 @@ import ActivityTab from './ActivityTab';
 import SwapSuccessModal from './SwapSuccessModal';
 import SwapActivity from './SwapActivity';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['SRAC', 'RACS', 'SACS', 'USDC'];
+const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', /* 'EURC', */ 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // EURC commented out - liquidity issue
+
+// Custom token interface for ERC20 addresses
+interface CustomToken {
+  address: Address;
+  symbol: string;
+  name: string;
+  decimals: number;
+}
 
 export default function Swap() {
   const { isConnected, address, chainId } = useAccount();
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
-  const [fromToken, setFromToken] = useState<TokenSymbol>('USDC');
-  const [toToken, setToToken] = useState<TokenSymbol>('SRAC');
+  const [fromToken, setFromToken] = useState<TokenSymbol | Address>('USDC');
+  const [toToken, setToToken] = useState<TokenSymbol | Address>('SRAC');
   const [slippage, setSlippage] = useState('0.5');
   const [showSettings, setShowSettings] = useState(false);
   const [showTokenSelector, setShowTokenSelector] = useState<'from' | 'to' | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [isCalculatingOutput, setIsCalculatingOutput] = useState(false);
   const [showLiquidityInfo, setShowLiquidityInfo] = useState(false);
+  
+  // Custom tokens state
+  const [customTokens, setCustomTokens] = useState<Map<Address, CustomToken>>(new Map());
+  const [addressInput, setAddressInput] = useState('');
+  const [isFetchingToken, setIsFetchingToken] = useState(false);
+  const [tokenFetchError, setTokenFetchError] = useState<string | null>(null);
 
-  const { swap, approveForSwap, isPending, isConfirming, isSuccess, error, hash } = useDEX();
-  const fromBalance = useTokenBalance(fromToken);
-  const toBalance = useTokenBalance(toToken);
-  const estimatedOutput = useSwapOutput(fromToken, toToken, fromAmount);
+  const { swap, approveForSwap, approveRouter, findSwapPath, isPending, isConfirming, isSuccess, error, hash } = useDEX();
+  
+  // Check if tokens are addresses
+  const fromTokenIsAddress = typeof fromToken === 'string' && isAddress(fromToken);
+  const toTokenIsAddress = typeof toToken === 'string' && isAddress(toToken);
+  const fromTokenCustom = fromTokenIsAddress ? customTokens.get(fromToken as Address) : null;
+  const toTokenCustom = toTokenIsAddress ? customTokens.get(toToken as Address) : null;
+  
+  // Always call hooks unconditionally (React rules) - call both and use the appropriate one
+  const fromBalancePredefined = useTokenBalance(fromTokenIsAddress ? null : (fromToken as TokenSymbol));
+  const fromBalanceCustom = useTokenBalanceByAddress(
+    fromTokenIsAddress && fromTokenCustom ? (fromToken as Address) : undefined,
+    fromTokenCustom?.decimals || 18
+  );
+  const fromBalance = (fromTokenIsAddress && fromTokenCustom ? fromBalanceCustom : fromBalancePredefined) || '0';
+  
+  const toBalancePredefined = useTokenBalance(toTokenIsAddress ? null : (toToken as TokenSymbol));
+  const toBalanceCustom = useTokenBalanceByAddress(
+    toTokenIsAddress && toTokenCustom ? (toToken as Address) : undefined,
+    toTokenCustom?.decimals || 18
+  );
+  const toBalance = (toTokenIsAddress && toTokenCustom ? toBalanceCustom : toBalancePredefined) || '0';
+  
+  const estimatedOutput = useSwapOutput(fromToken as TokenSymbol, toToken as TokenSymbol, fromAmount);
   const publicClient = usePublicClient();
   
+  // Fetch token info from ERC20 contract
+  const fetchTokenInfo = useCallback(async (tokenAddress: Address): Promise<CustomToken | null> => {
+    if (!publicClient) return null;
+    
+    setIsFetchingToken(true);
+    setTokenFetchError(null);
+    
+    try {
+      // Check if we already have this token cached
+      if (customTokens.has(tokenAddress)) {
+        setIsFetchingToken(false);
+        return customTokens.get(tokenAddress) || null;
+      }
+      
+      // Fetch token info from contract
+      const [symbol, name, decimals] = await Promise.all([
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'symbol',
+        }) as Promise<string>,
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'name',
+        }) as Promise<string>,
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'decimals',
+        }) as Promise<number>,
+      ]);
+      
+      const tokenInfo: CustomToken = {
+        address: tokenAddress,
+        symbol: symbol || 'UNKNOWN',
+        name: name || 'Unknown Token',
+        decimals: decimals || 18,
+      };
+      
+      // Cache the token
+      setCustomTokens(prev => new Map(prev).set(tokenAddress, tokenInfo));
+      setIsFetchingToken(false);
+      return tokenInfo;
+    } catch (err: any) {
+      setIsFetchingToken(false);
+      setTokenFetchError(err?.message || 'Failed to fetch token info. Make sure the address is a valid ERC20 token on Arc Testnet.');
+      return null;
+    }
+  }, [publicClient, customTokens]);
+  
+  // Handle address input and fetch token automatically
+  const handleAddressInput = useCallback(async (input: string) => {
+    setAddressInput(input);
+    setTokenFetchError(null);
+    
+    // Auto-fetch when valid address is detected
+    if (input && isAddress(input)) {
+      const tokenInfo = await fetchTokenInfo(input as Address);
+      if (tokenInfo) {
+        // Auto-select the token after fetching
+        if (showTokenSelector === 'from') {
+          setFromToken(tokenInfo.address);
+        } else if (showTokenSelector === 'to') {
+          setToToken(tokenInfo.address);
+        }
+        setAddressInput('');
+        setShowTokenSelector(null);
+      }
+    }
+  }, [fetchTokenInfo, showTokenSelector]);
+  
+  // Get token display info (symbol or custom token symbol)
+  const getTokenDisplay = useCallback((token: TokenSymbol | Address): { symbol: string; name?: string; isCustom: boolean } => {
+    if (typeof token === 'string' && isAddress(token)) {
+      const customToken = customTokens.get(token as Address);
+      if (customToken) {
+        return { symbol: customToken.symbol, name: customToken.name, isCustom: true };
+      }
+      return { symbol: `${token.slice(0, 6)}...${token.slice(-4)}`, isCustom: true };
+    }
+    return { symbol: token, isCustom: false };
+  }, [customTokens]);
+  
+  // Get token address (works with both TokenSymbol and Address)
+  const getTokenAddress = useCallback((token: TokenSymbol | Address): Address | undefined => {
+    if (typeof token === 'string' && isAddress(token)) {
+      return token as Address;
+    }
+    return TOKENS[token as TokenSymbol]?.address;
+  }, []);
+  
+  // Get token decimals (works with both TokenSymbol and Address)
+  const getTokenDecimals = useCallback((token: TokenSymbol | Address): number => {
+    if (typeof token === 'string' && isAddress(token)) {
+      const customToken = customTokens.get(token as Address);
+      return customToken?.decimals || 18;
+    }
+    return TOKENS[token as TokenSymbol]?.decimals || 18;
+  }, [customTokens]);
+  
   // Get pool address using the hook
-  const poolAddress = usePoolAddress(fromToken, toToken);
+  // For custom tokens (addresses), we need to handle them differently
+  const fromTokenForPool = typeof fromToken === 'string' && isAddress(fromToken) 
+    ? (customTokens.get(fromToken as Address)?.symbol as TokenSymbol || fromToken as TokenSymbol)
+    : fromToken as TokenSymbol;
+  const toTokenForPool = typeof toToken === 'string' && isAddress(toToken)
+    ? (customTokens.get(toToken as Address)?.symbol as TokenSymbol || toToken as TokenSymbol)
+    : toToken as TokenSymbol;
+  const poolAddress = usePoolAddress(fromTokenForPool, toTokenForPool);
+  
+  // Get swap path for multi-hop swaps (to display route in review modal)
+  const [swapPath, setSwapPath] = useState<TokenSymbol[] | null>(null);
+  
+  useEffect(() => {
+    const fetchSwapPath = async () => {
+      if (!poolAddress && DEX_CONFIG.ROUTER_ADDRESS && publicClient) {
+        try {
+          const path = await findSwapPath(fromTokenForPool, toTokenForPool);
+          // Convert addresses to token symbols
+          const pathSymbols: TokenSymbol[] = [];
+          for (const addr of path) {
+            const token = Object.entries(TOKENS).find(([_, info]) => 
+              info.address.toLowerCase() === (addr as string).toLowerCase()
+            )?.[0] as TokenSymbol | undefined;
+            if (token) pathSymbols.push(token);
+          }
+          setSwapPath(pathSymbols.length > 0 ? pathSymbols : null);
+        } catch (error) {
+          setSwapPath(null);
+        }
+      } else {
+        setSwapPath(null); // Direct swap, no path needed
+      }
+    };
+    
+    if (fromToken && toToken && !poolAddress) {
+      fetchSwapPath();
+    } else {
+      setSwapPath(null);
+    }
+  }, [fromToken, toToken, poolAddress, publicClient, findSwapPath]);
   
   const [swapStep, setSwapStep] = useState<'none' | 'approving' | 'swapping'>('none');
   const [showProgressModal, setShowProgressModal] = useState(false);
@@ -90,8 +265,12 @@ export default function Swap() {
       return 'Token approval required. Please approve and try again.';
     }
     
-    // Pool errors
+    // Pool errors (but allow Router swaps)
     if (errorStr.includes('Pool not found') || errorStr.includes('pool')) {
+      // Check if Router can handle this swap
+      if (DEX_CONFIG.ROUTER_ADDRESS && !poolAddress && estimatedOutput && estimatedOutput !== '0') {
+        return 'Swap will use Router for multi-hop path.';
+      }
       return 'Pool not found. Please create the pool first.';
     }
     
@@ -113,12 +292,13 @@ export default function Swap() {
   };
 
   // Format output amount with appropriate decimals
-  const formatOutputAmount = (amount: string, token: TokenSymbol) => {
+  const formatOutputAmount = (amount: string, token: TokenSymbol | Address) => {
     if (!amount || amount === '0') return '0';
     const num = parseFloat(amount);
+    const decimals = getTokenDecimals(token);
     if (num === 0) return '0';
     
-    const tokenDecimals = TOKENS[token].decimals;
+    const tokenDecimals = decimals;
     // For 18 decimals: show up to 6 decimal places if < 1, otherwise 4
     // For 6 decimals: show up to 4 decimal places if < 1, otherwise 2
     if (num < 1) {
@@ -181,7 +361,9 @@ export default function Swap() {
     
     // CRITICAL: Match reserves based on pool's actual token order
     // poolReserves.reserveA = pool's tokenA balance, reserveB = pool's tokenB balance
-    const fromTokenAddr = TOKENS[fromToken].address.toLowerCase();
+    const fromTokenAddr = getTokenAddress(fromToken)?.toLowerCase();
+    if (!fromTokenAddr) return null;
+    
     const poolTokenAAddr = (poolTokenA as string).toLowerCase();
     const poolTokenBAddr = (poolTokenB as string).toLowerCase();
     
@@ -250,18 +432,29 @@ export default function Swap() {
     }
   }, [fromAmount, estimatedOutput, toToken]);
 
-  // Check if approval is needed
-  const fromTokenInfo = TOKENS[fromToken];
+  // Check if approval is needed (for direct pool or Router)
+  const fromTokenDecimals = getTokenDecimals(fromToken);
   const fromAmountWei = fromAmount && !isNaN(parseFloat(fromAmount)) && parseFloat(fromAmount) > 0
-    ? parseUnits(fromAmount, fromTokenInfo.decimals)
+    ? parseUnits(fromAmount, fromTokenDecimals)
     : 0n;
   
-  const currentAllowance = useTokenAllowance(fromToken, poolAddress);
-  const needsApproval = poolAddress && currentAllowance < fromAmountWei;
+  // Get actual token address for allowance checks
+  const fromTokenAddress = getTokenAddress(fromToken);
+  
+  // Check allowance for direct pool
+  const poolAllowance = fromTokenAddress ? useTokenAllowance(fromTokenAddress, poolAddress) : 0n;
+  
+  // Check allowance for Router (if no direct pool)
+  const routerAllowance = fromTokenAddress ? useTokenAllowance(fromTokenAddress, DEX_CONFIG.ROUTER_ADDRESS || null) : 0n;
+  
+  // Determine which approval is needed
+  const needsPoolApproval = poolAddress && poolAllowance < fromAmountWei;
+  const needsRouterApproval = !poolAddress && DEX_CONFIG.ROUTER_ADDRESS && routerAllowance < fromAmountWei;
+  const needsApproval = needsPoolApproval || needsRouterApproval;
 
   // Track when approval completes and auto-proceed to swap
   useEffect(() => {
-    if (isSuccess && swapStep === 'approving' && !approvalCompleted && poolAddress && address && publicClient) {
+    if (isSuccess && swapStep === 'approving' && !approvalCompleted && address && publicClient) {
       const proceedToSwap = async () => {
         try {
           // Mark approval as completed to prevent re-triggering
@@ -270,19 +463,29 @@ export default function Swap() {
           // Wait a moment for state to update
           await new Promise(resolve => setTimeout(resolve, 1500));
           
-          // Check fresh allowance
+          // Check fresh allowance (for pool or Router, depending on which was approved)
+          const spender = poolAddress || DEX_CONFIG.ROUTER_ADDRESS;
+          if (!spender) {
+            throw new Error('No spender address found');
+          }
+          
+          const fromTokenAddr = getTokenAddress(fromToken);
+          if (!fromTokenAddr) {
+            throw new Error('Invalid token address');
+          }
+          
           const freshAllowance = await publicClient.readContract({
-            address: fromTokenInfo.address,
+            address: fromTokenAddr,
             abi: ERC20_ABI,
             functionName: 'allowance',
-            args: [address, poolAddress],
+            args: [address, spender],
           });
 
           if (freshAllowance >= fromAmountWei) {
             // Approval confirmed, proceed to swap
             setSwapStep('swapping');
             const slippageValue = parseFloat(slippage);
-            await swap(fromToken, toToken, fromAmount, slippageValue);
+            await swap(fromTokenForPool, toTokenForPool, fromAmount, slippageValue);
           } else {
             throw new Error('Approval incomplete');
           }
@@ -296,7 +499,7 @@ export default function Swap() {
 
       proceedToSwap();
     }
-  }, [isSuccess, swapStep, approvalCompleted, poolAddress, address, publicClient, fromToken, toToken, fromAmount, fromAmountWei, fromTokenInfo, swap, slippage]);
+  }, [isSuccess, swapStep, approvalCompleted, poolAddress, address, publicClient, fromToken, toToken, fromAmount, fromAmountWei, getTokenAddress, swap, slippage]);
 
   // Track swap transaction hash when it's initiated
   // CRITICAL: This effect only runs when hash changes to a NEW transaction
@@ -447,18 +650,32 @@ export default function Swap() {
 
     // If on correct network, proceed with swap
     if (!fromAmount || parseFloat(fromAmount) <= 0) return;
-    if (!publicClient || !address || !poolAddress) {
-      setErrorMessage('Pool not found. Please create the pool first.');
+    if (!publicClient || !address) {
+      setErrorMessage('Wallet not connected');
       return;
     }
+    
+    // Check if we have a direct pool OR Router can handle it
+    if (!poolAddress && (!DEX_CONFIG.ROUTER_ADDRESS || !estimatedOutput || estimatedOutput === '0')) {
+      setErrorMessage('Pool not found. Please create the pool first or ensure Router is configured.');
+      return;
+    }
+    
     // Show review modal first
     setShowReviewModal(true);
   };
 
   const handleConfirmSwap = async () => {
     if (!isConnected || !fromAmount || parseFloat(fromAmount) <= 0) return;
-    if (!publicClient || !address || !poolAddress) {
-      setErrorMessage('Pool not found. Please create the pool first.');
+    if (!publicClient || !address) {
+      setErrorMessage('Wallet not connected');
+      setShowReviewModal(false);
+      return;
+    }
+    
+    // Check if we have a direct pool OR Router can handle it
+    if (!poolAddress && (!DEX_CONFIG.ROUTER_ADDRESS || !estimatedOutput || estimatedOutput === '0')) {
+      setErrorMessage('Pool not found. Please create the pool first or ensure Router is configured.');
       setShowReviewModal(false);
       return;
     }
@@ -489,7 +706,14 @@ export default function Swap() {
         setSwapTransactionStarted(false);
         setSwapStep('approving');
         setShowProgressModal(true);
-        approveForSwap(fromToken, poolAddress);
+        
+        // Approve Router if no direct pool, otherwise approve pool
+        // Use actual token address
+        if (needsRouterApproval && fromTokenAddress) {
+          approveRouter(fromTokenAddress);
+        } else if (poolAddress && fromTokenAddress) {
+          approveForSwap(fromTokenAddress, poolAddress);
+        }
       } else {
         // Already approved, proceed directly to swap
         // CRITICAL: Reset transaction started flag before swap
@@ -498,7 +722,7 @@ export default function Swap() {
         setShowProgressModal(true);
         setApprovalCompleted(true); // Skip approval tracking
         const slippageValue = parseFloat(slippage);
-        await swap(fromToken, toToken, fromAmount, slippageValue);
+        await swap(fromTokenForPool, toTokenForPool, fromAmount, slippageValue);
         // Note: swapTransactionStarted will be set to true when hash is captured in useEffect
       }
     } catch (err: any) {
@@ -514,7 +738,7 @@ export default function Swap() {
     }
   };
 
-  const selectToken = (token: TokenSymbol) => {
+  const selectToken = (token: TokenSymbol | Address) => {
     if (showTokenSelector === 'from') {
       if (token === toToken) {
         // Swap tokens if selecting the same as 'to'
@@ -529,6 +753,73 @@ export default function Swap() {
       setToToken(token);
     }
     setShowTokenSelector(null);
+    setAddressInput('');
+    setTokenFetchError(null);
+  };
+
+  // Token item component for predefined tokens
+  const TokenItem = ({ token, isSelected, onSelect }: { token: TokenSymbol; isSelected: boolean; onSelect: () => void }) => {
+    const tokenBalance = useTokenBalance(token);
+    return (
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        whileHover={{ scale: 1.02, x: 4 }}
+        whileTap={{ scale: 0.98 }}
+        className={`w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 rounded-lg ${
+          isSelected ? 'bg-orange-50' : ''
+        }`}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <TokenLogo token={token} size={32} className="flex-shrink-0" />
+          <div className="flex flex-col items-start flex-1 min-w-0">
+            <span className="font-semibold text-gray-900">{token}</span>
+            {TOKENS[token] && (
+              <span className="text-xs text-gray-500">{TOKENS[token].address.slice(0, 6)}...{TOKENS[token].address.slice(-4)}</span>
+            )}
+          </div>
+        </div>
+        {isConnected && parseFloat(tokenBalance) > 0 && (
+          <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+            {parseFloat(tokenBalance).toFixed(4)}
+          </span>
+        )}
+      </motion.button>
+    );
+  };
+
+  // Custom token item component
+  const CustomTokenItem = ({ token, isSelected, onSelect }: { token: CustomToken; isSelected: boolean; onSelect: () => void }) => {
+    const tokenBalance = useTokenBalanceByAddress(token.address, token.decimals);
+    return (
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        whileHover={{ scale: 1.02, x: 4 }}
+        whileTap={{ scale: 0.98 }}
+        className={`w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 rounded-lg ${
+          isSelected ? 'bg-orange-50' : ''
+        }`}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <TokenLogo token={token.symbol} size={32} className="flex-shrink-0" address={token.address} />
+          <div className="flex flex-col items-start flex-1 min-w-0">
+            <span className="font-semibold text-gray-900 truncate w-full">{token.symbol}</span>
+            <span className="text-xs text-gray-500 truncate w-full">{token.name}</span>
+            <span className="text-xs text-gray-400 font-mono">{token.address.slice(0, 6)}...{token.address.slice(-4)}</span>
+          </div>
+        </div>
+        {isConnected && parseFloat(tokenBalance) > 0 && (
+          <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+            {parseFloat(tokenBalance).toFixed(4)}
+          </span>
+        )}
+      </motion.button>
+    );
   };
 
   return (
@@ -635,8 +926,18 @@ export default function Swap() {
                   whileTap={{ scale: 0.98 }}
                 >
                   <div className="flex items-center gap-2">
-                    <TokenLogo token={fromToken} size={32} className="flex-shrink-0" />
-                    <span className="font-semibold text-gray-900 text-sm sm:text-base">{fromToken}</span>
+                    <TokenLogo 
+                      token={typeof fromToken === 'string' && isAddress(fromToken) ? getTokenDisplay(fromToken).symbol : fromToken} 
+                      size={32} 
+                      className="flex-shrink-0"
+                      address={typeof fromToken === 'string' && isAddress(fromToken) ? fromToken : undefined}
+                    />
+                    <div className="flex flex-col items-start">
+                      <span className="font-semibold text-gray-900 text-sm sm:text-base">{getTokenDisplay(fromToken).symbol}</span>
+                      {getTokenDisplay(fromToken).name && (
+                        <span className="text-xs text-gray-500">{getTokenDisplay(fromToken).name}</span>
+                      )}
+                    </div>
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-600 hidden sm:block" />
                 </motion.button>
@@ -648,25 +949,63 @@ export default function Swap() {
                       exit={{ opacity: 0, y: -10, scale: 0.95 }}
                       transition={{ duration: 0.2 }}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute top-full mt-2 left-0 sm:left-auto sm:right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-[100] min-w-[200px] w-full sm:w-auto max-h-[300px] overflow-y-auto scrollbar-hide"
+                      className="absolute top-full mt-2 left-0 sm:left-auto sm:right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-[100] min-w-[400px] w-full sm:w-auto max-h-[600px] overflow-hidden flex flex-col"
                     >
-                    {AVAILABLE_TOKENS.map((token) => (
-                      <motion.button
-                        key={token}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          selectToken(token);
-                        }}
-                        whileHover={{ scale: 1.02, x: 4 }}
-                        whileTap={{ scale: 0.98 }}
-                        className={`w-full px-4 py-3 flex items-center gap-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl ${
-                          fromToken === token ? 'bg-orange-50' : ''
-                        }`}
-                      >
-                        <TokenLogo token={token} size={32} className="flex-shrink-0" />
-                        <span className="font-semibold text-gray-900">{token}</span>
-                      </motion.button>
-                    ))}
+                      {/* Address Input Section */}
+                      <div className="p-4 border-b border-gray-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Search className="w-5 h-5 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-700">Paste ERC20 Address</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={addressInput}
+                          onChange={(e) => handleAddressInput(e.target.value)}
+                          placeholder="0x..."
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        {isFetchingToken && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
+                            <span className="text-xs text-gray-500">Fetching token info...</span>
+                          </div>
+                        )}
+                        {tokenFetchError && (
+                          <p className="text-xs text-red-500 mt-2">{tokenFetchError}</p>
+                        )}
+                      </div>
+                      
+                      {/* Token List */}
+                      <div className="overflow-y-auto max-h-[400px] scrollbar-hide">
+                        {/* Predefined Tokens */}
+                        <div className="p-2">
+                          <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
+                          {AVAILABLE_TOKENS.map((token) => (
+                            <TokenItem
+                              key={token}
+                              token={token}
+                              isSelected={fromToken === token}
+                              onSelect={() => selectToken(token)}
+                            />
+                          ))}
+                        </div>
+                        
+                        {/* Custom Tokens */}
+                        {Array.from(customTokens.values()).length > 0 && (
+                          <div className="p-2 border-t border-gray-200">
+                            <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Custom Tokens</p>
+                            {Array.from(customTokens.values()).map((token) => (
+                              <CustomTokenItem
+                                key={token.address}
+                                token={token}
+                                isSelected={fromToken === token.address}
+                                onSelect={() => selectToken(token.address)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -725,8 +1064,18 @@ export default function Swap() {
                   whileTap={{ scale: 0.98 }}
                 >
                   <div className="flex items-center gap-2">
-                    <TokenLogo token={toToken} size={32} className="flex-shrink-0" />
-                    <span className="font-semibold text-gray-900 text-sm sm:text-base">{toToken}</span>
+                    <TokenLogo 
+                      token={typeof toToken === 'string' && isAddress(toToken) ? getTokenDisplay(toToken).symbol : toToken} 
+                      size={32} 
+                      className="flex-shrink-0"
+                      address={typeof toToken === 'string' && isAddress(toToken) ? toToken : undefined}
+                    />
+                    <div className="flex flex-col items-start">
+                      <span className="font-semibold text-gray-900 text-sm sm:text-base">{getTokenDisplay(toToken).symbol}</span>
+                      {getTokenDisplay(toToken).name && (
+                        <span className="text-xs text-gray-500">{getTokenDisplay(toToken).name}</span>
+                      )}
+                    </div>
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-600 hidden sm:block" />
                 </motion.button>
@@ -738,25 +1087,63 @@ export default function Swap() {
                       exit={{ opacity: 0, y: -10, scale: 0.95 }}
                       transition={{ duration: 0.2 }}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute top-full mt-2 left-0 sm:left-auto sm:right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-[100] min-w-[200px] w-full sm:w-auto max-h-[300px] overflow-y-auto scrollbar-hide"
+                      className="absolute top-full mt-2 left-0 sm:left-auto sm:right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-[100] min-w-[400px] w-full sm:w-auto max-h-[600px] overflow-hidden flex flex-col"
                     >
-                      {AVAILABLE_TOKENS.map((token) => (
-                        <motion.button
-                          key={token}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            selectToken(token);
-                          }}
-                          whileHover={{ scale: 1.02, x: 4 }}
-                          whileTap={{ scale: 0.98 }}
-                          className={`w-full px-4 py-3 flex items-center gap-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl ${
-                            toToken === token ? 'bg-orange-50' : ''
-                          }`}
-                        >
-                          <TokenLogo token={token} size={32} className="flex-shrink-0" />
-                          <span className="font-semibold text-gray-900">{token}</span>
-                        </motion.button>
-                      ))}
+                      {/* Address Input Section */}
+                      <div className="p-4 border-b border-gray-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Search className="w-5 h-5 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-700">Paste ERC20 Address</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={addressInput}
+                          onChange={(e) => handleAddressInput(e.target.value)}
+                          placeholder="0x..."
+                          className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        {isFetchingToken && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
+                            <span className="text-xs text-gray-500">Fetching token info...</span>
+                          </div>
+                        )}
+                        {tokenFetchError && (
+                          <p className="text-xs text-red-500 mt-2">{tokenFetchError}</p>
+                        )}
+                      </div>
+                      
+                      {/* Token List */}
+                      <div className="overflow-y-auto max-h-[400px] scrollbar-hide">
+                        {/* Predefined Tokens */}
+                        <div className="p-2">
+                          <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
+                          {AVAILABLE_TOKENS.map((token) => (
+                            <TokenItem
+                              key={token}
+                              token={token}
+                              isSelected={toToken === token}
+                              onSelect={() => selectToken(token)}
+                            />
+                          ))}
+                        </div>
+                        
+                        {/* Custom Tokens */}
+                        {Array.from(customTokens.values()).length > 0 && (
+                          <div className="p-2 border-t border-gray-200">
+                            <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Custom Tokens</p>
+                            {Array.from(customTokens.values()).map((token) => (
+                              <CustomTokenItem
+                                key={token.address}
+                                token={token}
+                                isSelected={toToken === token.address}
+                                onSelect={() => selectToken(token.address)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -997,11 +1384,15 @@ export default function Swap() {
                   <div>
                     <p className="text-xs text-gray-500 mb-2">You pay</p>
                     <div className="flex items-center justify-between">
-                      <p className="text-2xl font-bold text-gray-900">{fromAmount} {fromToken}</p>
-                      <TokenLogo token={fromToken} size={40} />
+                      <p className="text-2xl font-bold text-gray-900">{fromAmount} {getTokenDisplay(fromToken).symbol}</p>
+                      <TokenLogo 
+                        token={typeof fromToken === 'string' && isAddress(fromToken) ? getTokenDisplay(fromToken).symbol : fromToken} 
+                        size={40}
+                        address={typeof fromToken === 'string' && isAddress(fromToken) ? fromToken : undefined}
+                      />
                     </div>
                     <p className="text-xs text-gray-500 mt-1 whitespace-nowrap">
-                      Balance: {parseFloat(fromBalance).toFixed(4)} {fromToken}
+                      Balance: {parseFloat(fromBalance).toFixed(4)} {getTokenDisplay(fromToken).symbol}
                     </p>
                   </div>
 
@@ -1014,16 +1405,43 @@ export default function Swap() {
                   <div>
                     <p className="text-xs text-gray-500 mb-2">You receive</p>
                     <div className="flex items-center justify-between">
-                      <p className="text-2xl font-bold text-gray-900">{toAmount} {toToken}</p>
-                      <TokenLogo token={toToken} size={40} />
+                      <p className="text-2xl font-bold text-gray-900">{toAmount} {getTokenDisplay(toToken).symbol}</p>
+                      <TokenLogo 
+                        token={typeof toToken === 'string' && isAddress(toToken) ? getTokenDisplay(toToken).symbol : toToken} 
+                        size={40}
+                        address={typeof toToken === 'string' && isAddress(toToken) ? toToken : undefined}
+                      />
                     </div>
                     <p className="text-xs text-gray-500 mt-1 whitespace-nowrap">
-                      Balance: {parseFloat(toBalance).toFixed(4)} {toToken}
+                      Balance: {parseFloat(toBalance).toFixed(4)} {getTokenDisplay(toToken).symbol}
                     </p>
                   </div>
 
                   {/* Swap Details */}
                   <div className="space-y-3 pt-4 border-t border-gray-200">
+                    {/* Swap Route (for multi-hop) */}
+                    {swapPath && swapPath.length > 2 && (
+                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                        <p className="text-xs text-gray-600 mb-2">Swap Route</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {swapPath.map((token, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <TokenLogo token={token} size={20} />
+                                <span className="text-sm font-medium text-gray-900">{token}</span>
+                              </div>
+                              {index < swapPath.length - 1 && (
+                                <ArrowDownUp className="w-3 h-3 text-orange-500" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-orange-600 mt-2">
+                          This swap will go through {swapPath.length - 1} hop{swapPath.length - 1 > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Rate */}
                     {exchangeRate && (
                       <div className="flex justify-between text-sm">
@@ -1253,9 +1671,10 @@ export default function Swap() {
           }}
         >
           <PriceChart
-            fromToken={fromToken}
-            toToken={toToken}
+            fromToken={fromTokenForPool}
+            toToken={toTokenForPool}
             poolAddress={poolAddress}
+            swapPath={swapPath}
             height={400}
           />
         </motion.div>
@@ -1263,8 +1682,8 @@ export default function Swap() {
 
       {/* Swap Activity - Show swap events for current pair */}
       <SwapActivity
-        fromToken={fromToken}
-        toToken={toToken}
+        fromToken={fromTokenForPool}
+        toToken={toTokenForPool}
         poolAddress={poolAddress}
       />
 
@@ -1288,8 +1707,8 @@ export default function Swap() {
           setSwapTransactionStarted(false); // CRITICAL: Reset transaction started flag
           setHasBeenPendingForCurrentHash(false); // CRITICAL: Reset pending state tracking
         }}
-        fromToken={fromToken}
-        toToken={toToken}
+        fromToken={fromTokenForPool}
+        toToken={toTokenForPool}
         fromAmount={fromAmount}
         toAmount={toAmount}
         price={exchangeRate}

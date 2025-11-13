@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight, ExternalLink, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { formatUnits, type Address } from 'viem';
+import { formatUnits, type Address, isAddress } from 'viem';
 import { TOKENS, type TokenSymbol } from '../hooks/useDEX';
+import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 
 interface SwapEvent {
@@ -17,8 +18,8 @@ interface SwapEvent {
 }
 
 interface SwapActivityProps {
-  fromToken: TokenSymbol;
-  toToken: TokenSymbol;
+  fromToken: TokenSymbol | Address;
+  toToken: TokenSymbol | Address;
   poolAddress: Address | null;
 }
 
@@ -33,9 +34,17 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+  // Helper function to get token address (handles both TokenSymbol and Address)
+  const getTokenAddress = (token: TokenSymbol | Address): string | undefined => {
+    if (typeof token === 'string' && isAddress(token)) {
+      return token.toLowerCase();
+    }
+    return TOKENS[token as TokenSymbol]?.address.toLowerCase();
+  };
+
   // Get token addresses
-  const fromTokenAddr = TOKENS[fromToken]?.address.toLowerCase();
-  const toTokenAddr = TOKENS[toToken]?.address.toLowerCase();
+  const fromTokenAddr = getTokenAddress(fromToken);
+  const toTokenAddr = getTokenAddress(toToken);
 
   // Fetch swap events for this pool
   useEffect(() => {
@@ -233,7 +242,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
                           {getTraderAddress(event)}
                         </span>
                         <a
-                          href={`https://explorer.arc.network/tx/${event.tx_hash}`}
+                          href={`${DEX_CONFIG.EXPLORER_URL}/tx/${event.tx_hash}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-orange-600 hover:text-orange-700 transition-colors"
@@ -302,7 +311,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
                     </td>
                     <td className="py-3 px-4">
                       <a
-                        href={`https://explorer.arc.network/tx/${event.tx_hash}`}
+                        href={`${DEX_CONFIG.EXPLORER_URL}/tx/${event.tx_hash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-orange-600 hover:text-orange-700 transition-colors"

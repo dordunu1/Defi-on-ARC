@@ -217,3 +217,55 @@ export const FACTORY_ABI = [
   },
 ] as const;
 
+export const ROUTER_ABI = [
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'amountIn', type: 'uint256' },
+      { internalType: 'uint256', name: 'amountOutMin', type: 'uint256' },
+      { internalType: 'address[]', name: 'path', type: 'address[]' },
+      { internalType: 'address', name: 'to', type: 'address' },
+    ],
+    name: 'swapExactTokensForTokens',
+    outputs: [{ internalType: 'uint256[]', name: 'amounts', type: 'uint256[]' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'amountIn', type: 'uint256' },
+      { internalType: 'address[]', name: 'path', type: 'address[]' },
+    ],
+    name: 'getAmountsOut',
+    outputs: [{ internalType: 'uint256[]', name: 'amounts', type: 'uint256[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'amountOut', type: 'uint256' },
+      { internalType: 'address[]', name: 'path', type: 'address[]' },
+    ],
+    name: 'getAmountsIn',
+    outputs: [{ internalType: 'uint256[]', name: 'amounts', type: 'uint256[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'tokenIn', type: 'address' },
+      { internalType: 'address', name: 'tokenOut', type: 'address' },
+    ],
+    name: 'findBestPath',
+    outputs: [{ internalType: 'address[]', name: 'path', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'factory',
+    outputs: [{ internalType: 'contract PoolFactory', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+

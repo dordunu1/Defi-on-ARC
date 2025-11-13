@@ -17,6 +17,13 @@ interface PoolInfo {
   tokenASymbol: string;
   tokenBSymbol: string;
   poolAddress: Address;
+  // Data from Supabase (indexer)
+  reserveA?: string;
+  reserveB?: string;
+  reserveADecimals?: number;
+  reserveBDecimals?: number;
+  totalLiquidity?: number; // TVL in USD from indexer
+  lastUpdated?: string;
 }
 
 interface TVLDataPoint {
@@ -108,9 +115,9 @@ export default function Pools() {
     }
   }, []);
 
-  // Fetch pools from RPC (always read reserves directly from contracts - NO CACHING)
+  // Fetch pools from Supabase (indexer already stores all pool data including TVL)
   const fetchPools = useCallback(async () => {
-    if (!isArcTestnet || poolCountNum === 0 || !publicClient) {
+    if (!isArcTestnet || !supabaseUrl || !supabaseKey) {
       setPools([]);
       setIsLoading(false);
       return;
@@ -118,76 +125,44 @@ export default function Pools() {
 
     setIsLoading(true);
 
-    // Always fetch from RPC - reserves should come directly from contracts
-    fetchFromRPC();
+    try {
+      // Fetch pools from Supabase - indexer already stores reserves, TVL, and token info
+      const response = await fetch(`${supabaseUrl}/rest/v1/pools?select=*&order=total_liquidity.desc`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+      });
 
-    async function fetchFromRPC() {
-      if (!publicClient) {
+      if (!response.ok) {
+        console.error('Error fetching pools from Supabase:', response.statusText);
         setIsLoading(false);
         return;
       }
 
-      const poolList: PoolInfo[] = [];
+      const poolsData = await response.json();
+      const poolsList: PoolInfo[] = poolsData.map((pool: any) => ({
+        poolAddress: pool.pool_address as Address,
+        tokenA: pool.token_a as Address,
+        tokenB: pool.token_b as Address,
+        tokenASymbol: pool.token_a_symbol || pool.token_a.slice(0, 6) + '...',
+        tokenBSymbol: pool.token_b_symbol || pool.token_b.slice(0, 6) + '...',
+        // Include Supabase data
+        reserveA: pool.reserve_a,
+        reserveB: pool.reserve_b,
+        reserveADecimals: pool.reserve_a_decimals || 18,
+        reserveBDecimals: pool.reserve_b_decimals || 18,
+        totalLiquidity: pool.total_liquidity ? parseFloat(pool.total_liquidity) : undefined,
+        lastUpdated: pool.last_updated,
+      }));
 
-      for (let i = 0; i < poolCountNum; i++) {
-        try {
-          const poolAddress = await publicClient.readContract({
-            address: DEX_CONFIG.FACTORY_ADDRESS as Address,
-            abi: FACTORY_ABI,
-            functionName: 'allPools',
-            args: [BigInt(i)],
-          }) as Address;
-
-          if (!poolAddress || poolAddress === '0x0000000000000000000000000000000000000000') continue;
-
-          // Get token addresses from pool
-          const [tokenA, tokenB] = await Promise.all([
-            publicClient.readContract({
-              address: poolAddress,
-              abi: POOL_ABI,
-              functionName: 'tokenA',
-            }) as Promise<Address>,
-            publicClient.readContract({
-              address: poolAddress,
-              abi: POOL_ABI,
-              functionName: 'tokenB',
-            }) as Promise<Address>,
-          ]);
-
-          // Get token symbols
-          const [symbolA, symbolB] = await Promise.all([
-            publicClient.readContract({
-              address: tokenA,
-              abi: ERC20_ABI,
-              functionName: 'symbol',
-            }).catch(() => tokenA.slice(0, 6) + '...') as Promise<string>,
-            publicClient.readContract({
-              address: tokenB,
-              abi: ERC20_ABI,
-              functionName: 'symbol',
-            }).catch(() => tokenB.slice(0, 6) + '...') as Promise<string>,
-          ]);
-
-          poolList.push({
-            poolAddress,
-            tokenA,
-            tokenB,
-            tokenASymbol: symbolA || tokenA.slice(0, 6) + '...',
-            tokenBSymbol: symbolB || tokenB.slice(0, 6) + '...',
-          });
-        } catch (error) {
-          console.error(`Error fetching pool ${i}:`, error);
-        }
-      }
-
-      // Include all pools, regardless of liquidity
-      // Users can see and interact with pools even if they have zero liquidity
-      setPools(poolList);
-      // Clear any old cache - we don't use caching anymore to ensure fresh data
-      clearCache();
+      setPools(poolsList);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching pools:', error);
       setIsLoading(false);
     }
-  }, [poolCountNum, isArcTestnet, publicClient, clearCache]);
+  }, [isArcTestnet, supabaseUrl, supabaseKey]);
 
   // Initial fetch - always fetch fresh from RPC
   useEffect(() => {
@@ -507,85 +482,20 @@ export default function Pools() {
 
   // Note: Swap events and fees/volume tracking will be handled by a backend indexer
 
-  // Calculate TVL and fees from all pools
+  // Calculate total TVL from Supabase data (indexer already calculated it)
   useEffect(() => {
-    const calculateMetrics = async () => {
-      if (!publicClient || pools.length === 0) {
-        setTotalTVL(0);
-        return;
-      }
+    if (pools.length === 0) {
+      setTotalTVL(0);
+      return;
+    }
 
-      let totalTVL = 0;
+    // Sum up TVL from Supabase (indexer already calculated it)
+    const totalTVL = pools.reduce((sum, pool) => {
+      return sum + (pool.totalLiquidity || 0);
+    }, 0);
 
-      // First, calculate prices for all tokens
-      const tokenPrices = new Map<string, number>();
-      const uniqueTokens = new Set<string>();
-      
-      // Collect all unique tokens
-      for (const pool of pools) {
-        uniqueTokens.add(pool.tokenA.toLowerCase());
-        uniqueTokens.add(pool.tokenB.toLowerCase());
-      }
-
-      // Get prices for all tokens
-      for (const tokenAddress of uniqueTokens) {
-        const price = await getTokenPriceInUSD(tokenAddress as Address, pools);
-        tokenPrices.set(tokenAddress, price);
-      }
-
-      // Now calculate TVL for each pool
-      // IMPORTANT: Read actual token balances from ERC20 contracts, not stored reserves
-      for (const pool of pools) {
-        try {
-          // Read actual token balances from ERC20 contracts (source of truth)
-          const [reserveA, reserveB] = await Promise.all([
-            publicClient.readContract({
-              address: pool.tokenA,
-              abi: ERC20_ABI,
-              functionName: 'balanceOf',
-              args: [pool.poolAddress], // Pool's balance of tokenA
-            }),
-            publicClient.readContract({
-              address: pool.tokenB,
-              abi: ERC20_ABI,
-              functionName: 'balanceOf',
-              args: [pool.poolAddress], // Pool's balance of tokenB
-            }),
-          ]);
-
-          const tokenADecimals = Object.entries(TOKENS).find(([_, info]) => 
-            info.address.toLowerCase() === pool.tokenA.toLowerCase()
-          )?.[1]?.decimals || 18;
-
-          const tokenBDecimals = Object.entries(TOKENS).find(([_, info]) => 
-            info.address.toLowerCase() === pool.tokenB.toLowerCase()
-          )?.[1]?.decimals || 18;
-
-          const reserveAStr = formatUnits(reserveA as bigint, tokenADecimals);
-          const reserveBStr = formatUnits(reserveB as bigint, tokenBDecimals);
-
-          const reserveAValue = parseFloat(reserveAStr);
-          const reserveBValue = parseFloat(reserveBStr);
-
-          // Get USD prices
-          const priceA = tokenPrices.get(pool.tokenA.toLowerCase()) || 0;
-          const priceB = tokenPrices.get(pool.tokenB.toLowerCase()) || 0;
-
-          // Calculate TVL: (reserveA * priceA) + (reserveB * priceB)
-          // If no price found, use reserve value directly (assume $1 for unknown tokens)
-          const poolTVL = (reserveAValue * (priceA || 1)) + (reserveBValue * (priceB || 1));
-          totalTVL += poolTVL;
-        } catch (error) {
-          console.error(`Error calculating metrics for pool ${pool.poolAddress}:`, error);
-        }
-      }
-
-      // Always set TVL from RPC reserves (Supabase is NOT used for reserves)
-      setTotalTVL(totalTVL);
-    };
-
-    calculateMetrics();
-  }, [pools, publicClient, getTokenPriceInUSD]);
+    setTotalTVL(totalTVL);
+  }, [pools]);
 
   // Generate TVL history when totalTVL or daily metrics change
   useEffect(() => {
@@ -1059,25 +969,18 @@ function PoolCard({
   const { isConnected, address, chainId } = useAccount();
   const isArcTestnet = chainId === 5042002;
 
-  // Get reserves - read actual token balances from ERC20 contracts (source of truth)
-  // This matches the indexer's approach and ensures accurate on-chain data
-  const { data: reserveA } = useReadContract({
-    address: pool.tokenA,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: pool.poolAddress ? [pool.poolAddress] : undefined,
-    query: { enabled: !!pool.poolAddress && !!pool.tokenA },
-  });
+  // Use reserves from Supabase (indexer data) - no RPC calls needed!
+  const reserveAStr = pool.reserveA && pool.reserveADecimals
+    ? formatUnits(BigInt(pool.reserveA), pool.reserveADecimals)
+    : '0';
+  const reserveBStr = pool.reserveB && pool.reserveBDecimals
+    ? formatUnits(BigInt(pool.reserveB), pool.reserveBDecimals)
+    : '0';
+  
+  // Use TVL from Supabase (indexer already calculated it)
+  const poolTVL = pool.totalLiquidity || null;
 
-  const { data: reserveB } = useReadContract({
-    address: pool.tokenB,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: pool.poolAddress ? [pool.poolAddress] : undefined,
-    query: { enabled: !!pool.poolAddress && !!pool.tokenB },
-  });
-
-  // Get LP balance
+  // Only make RPC calls for user-specific data (LP balance, total supply)
   const { data: lpBalance } = useReadContract({
     address: pool.poolAddress,
     abi: POOL_ABI,
@@ -1086,7 +989,6 @@ function PoolCard({
     query: { enabled: !!pool.poolAddress && !!address && isConnected },
   });
 
-  // Get total LP supply
   const { data: totalSupply } = useReadContract({
     address: pool.poolAddress,
     abi: POOL_ABI,
@@ -1094,36 +996,23 @@ function PoolCard({
     query: { enabled: !!pool.poolAddress },
   });
 
-  // Get token decimals for proper formatting
-  const tokenADecimals = Object.entries(TOKENS).find(([_, info]) => 
-    info.address.toLowerCase() === pool.tokenA.toLowerCase()
-  )?.[1]?.decimals || 18;
-
-  const tokenBDecimals = Object.entries(TOKENS).find(([_, info]) => 
-    info.address.toLowerCase() === pool.tokenB.toLowerCase()
-  )?.[1]?.decimals || 18;
-
-  // Format reserves with correct decimals
-  const reserveAStr = reserveA ? formatUnits(reserveA, tokenADecimals) : '0';
-  const reserveBStr = reserveB ? formatUnits(reserveB, tokenBDecimals) : '0';
   const lpBalanceStr = lpBalance ? formatUnits(lpBalance, 18) : '0';
   const totalSupplyStr = totalSupply ? formatUnits(totalSupply, 18) : '0';
   const hasPosition = parseFloat(lpBalanceStr) > 0;
-
-  // Show all pools, even those with zero liquidity
-  // This allows users to add liquidity to empty pools
 
   // Hide if filtering by "my-pools" and user has no position
   if (filterOption === 'my-pools' && (!hasPosition || !isConnected || !isArcTestnet)) {
     return null;
   }
 
-  // Calculate total liquidity (sum of reserves - assumes tokens have similar value)
-  const totalLiquidity = (parseFloat(reserveAStr) + parseFloat(reserveBStr)).toFixed(2);
+  // Use TVL if calculated, otherwise fallback to sum of reserves
+  const totalLiquidity = poolTVL !== null ? poolTVL.toFixed(2) : (parseFloat(reserveAStr) + parseFloat(reserveBStr)).toFixed(2);
   
-  // Calculate user's position value
+  // Calculate user's position value in USD (use TVL if available, otherwise use sum of reserves)
   const userPositionValue = totalSupply && parseFloat(totalSupplyStr) > 0 && hasPosition
-    ? ((parseFloat(lpBalanceStr) / parseFloat(totalSupplyStr)) * parseFloat(totalLiquidity)).toFixed(2)
+    ? poolTVL !== null
+      ? ((parseFloat(lpBalanceStr) / parseFloat(totalSupplyStr)) * poolTVL).toFixed(2)
+      : ((parseFloat(lpBalanceStr) / parseFloat(totalSupplyStr)) * parseFloat(totalLiquidity)).toFixed(2)
     : '0';
   
   // Format numbers
@@ -1151,12 +1040,12 @@ function PoolCard({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         {/* Pool Info */}
         <div className="flex items-center gap-3 sm:gap-4">
-          <div className="flex -space-x-2 flex-shrink-0">
-            <div className="relative border-2 sm:border-4 border-white shadow-lg rounded-full">
-              <TokenLogo token={pool.tokenASymbol} size={48} className="flex-shrink-0" />
+          <div className="flex -space-x-6 flex-shrink-0">
+            <div className="relative border-2 border-white shadow-lg rounded-full z-10">
+              <TokenLogo token={pool.tokenASymbol} size={36} className="flex-shrink-0" />
             </div>
-            <div className="relative border-2 sm:border-4 border-white shadow-lg rounded-full">
-              <TokenLogo token={pool.tokenBSymbol} size={48} className="flex-shrink-0" />
+            <div className="relative border-2 border-white shadow-lg rounded-full z-0">
+              <TokenLogo token={pool.tokenBSymbol} size={36} className="flex-shrink-0" />
             </div>
           </div>
           <div className="min-w-0 flex-1 sm:flex-none">
@@ -1188,16 +1077,16 @@ function PoolCard({
           <div>
             <p className="text-xs text-gray-500 mb-1">Total Liquidity</p>
             <p className="text-xs sm:text-sm font-bold text-gray-900">
-              {formatNumber(totalLiquidity)}
+              {poolTVL !== null ? `$${formatNumber(totalLiquidity)}` : formatNumber(totalLiquidity)}
             </p>
-            <p className="text-xs text-gray-400">Reserve A + Reserve B</p>
+            <p className="text-xs text-gray-400">{poolTVL !== null ? 'TVL (USD)' : 'Reserve A + Reserve B'}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">Your Position</p>
             <p className="text-xs sm:text-sm font-bold text-orange-600">
               {hasPosition ? (
                 <>
-                  <span className="block">{formatNumber(userPositionValue)}</span>
+                  <span className="block">{poolTVL !== null ? `$${formatNumber(userPositionValue)}` : formatNumber(userPositionValue)}</span>
                   <span className="text-xs text-gray-500 font-normal">
                     ({parseFloat(lpBalanceStr).toFixed(4)} LP)
                   </span>

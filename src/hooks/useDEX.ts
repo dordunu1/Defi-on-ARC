@@ -2,9 +2,9 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { formatUnits, parseUnits, type Address, isAddress } from 'viem';
 import { DEX_CONFIG } from '../config/dex';
-import { ERC20_ABI, POOL_ABI, FACTORY_ABI } from '../config/abis';
+import { ERC20_ABI, POOL_ABI, FACTORY_ABI, ROUTER_ABI } from '../config/abis';
 
-export type TokenSymbol = 'SRAC' | 'RACS' | 'SACS' | 'USDC';
+export type TokenSymbol = 'SRAC' | 'RACS' | 'SACS' | 'USDC' | 'EURC' | 'KITTY' | 'DOGG';
 
 export interface TokenInfo {
   symbol: TokenSymbol;
@@ -22,6 +22,9 @@ export const TOKENS: Record<TokenSymbol, TokenInfo> = {
   RACS: { symbol: 'RACS', address: DEX_CONFIG.TOKENS.RACS as Address, decimals: 18 },
   SACS: { symbol: 'SACS', address: DEX_CONFIG.TOKENS.SACS as Address, decimals: 18 },
   USDC: { symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 }, // USDC ERC-20 uses 6 decimals
+  EURC: { symbol: 'EURC', address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a' as Address, decimals: 6 }, // EURC uses 6 decimals
+  KITTY: { symbol: 'KITTY', address: DEX_CONFIG.TOKENS.KITTY as Address, decimals: 18 },
+  DOGG: { symbol: 'DOGG', address: DEX_CONFIG.TOKENS.DOGG as Address, decimals: 18 },
 };
 
 // Get pool address for a token pair from factory
@@ -110,15 +113,21 @@ export function useDEX() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
   // Approve token for swap (separate function)
-  const approveForSwap = useCallback((token: TokenSymbol, poolAddress: Address) => {
+  const approveForSwap = useCallback((token: TokenSymbol | Address, poolAddress: Address) => {
     if (!address || !isConnected) throw new Error('Wallet not connected');
     
-    const tokenInfo = TOKENS[token];
+    // Handle both TokenSymbol and Address
+    const tokenAddress: Address = typeof token === 'string' && isAddress(token)
+      ? token as Address
+      : TOKENS[token as TokenSymbol]?.address;
+    
+    if (!tokenAddress) throw new Error('Invalid token address');
+    
     const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
 
     try {
       writeContract({
-        address: tokenInfo.address,
+        address: tokenAddress,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [poolAddress, maxApproval],
@@ -135,7 +144,115 @@ export function useDEX() {
     }
   }, [address, isConnected, writeContract]);
 
-  // Swap tokens (only performs swap, assumes approval is already done)
+  // Find swap path (direct or via USDC)
+  const findSwapPath = useCallback(async (
+    tokenA: TokenSymbol,
+    tokenB: TokenSymbol
+  ): Promise<Address[]> => {
+    if (!publicClient) throw new Error('Public client not available');
+    
+    const tokenAAddr = TOKENS[tokenA].address;
+    const tokenBAddr = TOKENS[tokenB].address;
+    
+    // Check direct pool first
+    const directPool = await getPoolAddress(tokenA, tokenB, publicClient);
+    if (directPool) {
+      return [tokenAAddr, tokenBAddr];
+    }
+    
+    // Try via USDC if router is available
+    if (DEX_CONFIG.ROUTER_ADDRESS) {
+      try {
+        const path = await publicClient.readContract({
+          address: DEX_CONFIG.ROUTER_ADDRESS as Address,
+          abi: ROUTER_ABI,
+          functionName: 'findBestPath',
+          args: [tokenAAddr, tokenBAddr],
+        }) as Address[];
+        return path;
+      } catch (error) {
+        // Router path finding failed, try manual USDC path
+      }
+    }
+    
+    // Manual path finding: try via USDC
+    const usdcPool1 = await getPoolAddress(tokenA, 'USDC', publicClient);
+    const usdcPool2 = await getPoolAddress('USDC', tokenB, publicClient);
+    
+    if (usdcPool1 && usdcPool2) {
+      return [tokenAAddr, DEX_CONFIG.USDC_ADDRESS, tokenBAddr];
+    }
+    
+    throw new Error('No swap path found. Create pools or use Router.');
+  }, [publicClient]);
+
+  // Swap tokens using Router (supports multi-hop)
+  const swapViaRouter = useCallback(async (
+    tokenA: TokenSymbol,
+    tokenB: TokenSymbol,
+    amountIn: string,
+    slippagePercent: number = 0.5
+  ) => {
+    if (!address || !isConnected || !publicClient) throw new Error('Wallet not connected');
+    if (!DEX_CONFIG.ROUTER_ADDRESS) throw new Error('Router not deployed. Please deploy Router contract.');
+    
+    const tokenAInfo = TOKENS[tokenA];
+    const amountInWei = parseUnits(amountIn, tokenAInfo.decimals);
+    
+    // Find swap path
+    const path = await findSwapPath(tokenA, tokenB);
+    
+    // Get expected output amounts
+    const amounts = await publicClient.readContract({
+      address: DEX_CONFIG.ROUTER_ADDRESS as Address,
+      abi: ROUTER_ABI,
+      functionName: 'getAmountsOut',
+      args: [amountInWei, path],
+    }) as bigint[];
+    
+    const expectedOutput = amounts[amounts.length - 1];
+    
+    // Calculate minimum output with slippage protection
+    const slippageMultiplier = BigInt(Math.floor((100 - slippagePercent) * 100));
+    const minOutputWei = (expectedOutput * slippageMultiplier) / 10000n;
+    
+    if (minOutputWei === 0n) {
+      throw new Error('Slippage too high or insufficient liquidity');
+    }
+    
+    // Verify router has allowance
+    const currentAllowance = await publicClient.readContract({
+      address: tokenAInfo.address,
+      abi: ERC20_ABI,
+      functionName: 'allowance',
+      args: [address, DEX_CONFIG.ROUTER_ADDRESS as Address],
+    });
+    
+    if (currentAllowance < amountInWei) {
+      throw new Error('Insufficient allowance. Please approve Router first.');
+    }
+    
+    // Execute router swap
+    try {
+      writeContract({
+        address: DEX_CONFIG.ROUTER_ADDRESS as Address,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactTokensForTokens',
+        args: [amountInWei, minOutputWei, path, address],
+      });
+    } catch (err: any) {
+      const errorStr = err.message || err.toString() || '';
+      if (errorStr.includes('User rejected') || 
+          errorStr.includes('User denied') || 
+          errorStr.includes('rejected the request') ||
+          errorStr.includes('denied transaction signature')) {
+        throw new Error('User rejected swap');
+      }
+      throw err;
+    }
+  }, [address, isConnected, writeContract, publicClient, findSwapPath]);
+
+  // Swap tokens (tries direct pool first, falls back to router if needed)
   const swap = useCallback(async (
     tokenA: TokenSymbol,
     tokenB: TokenSymbol,
@@ -144,8 +261,16 @@ export function useDEX() {
   ) => {
     if (!address || !isConnected || !publicClient) throw new Error('Wallet not connected');
     
+    // Try direct pool first
     const poolAddress = await getPoolAddress(tokenA, tokenB, publicClient);
-    if (!poolAddress) throw new Error('Pool not found. Create the pool first.');
+    
+    // If no direct pool, try router
+    if (!poolAddress) {
+      if (DEX_CONFIG.ROUTER_ADDRESS) {
+        return swapViaRouter(tokenA, tokenB, amountIn, slippagePercent);
+      }
+      throw new Error('Pool not found. Create the pool first or deploy Router for multi-hop swaps.');
+    }
 
     const tokenAInfo = TOKENS[tokenA];
     const tokenBInfo = TOKENS[tokenB];
@@ -383,12 +508,37 @@ export function useDEX() {
     });
   }, [address, isConnected, writeContract, publicClient]);
 
+  // Approve router for token (needed for multi-hop swaps)
+  const approveRouter = useCallback((token: TokenSymbol | Address) => {
+    if (!address || !isConnected) throw new Error('Wallet not connected');
+    if (!DEX_CONFIG.ROUTER_ADDRESS) throw new Error('Router not deployed');
+    
+    // Handle both TokenSymbol and Address
+    const tokenAddress: Address = typeof token === 'string' && isAddress(token)
+      ? token as Address
+      : TOKENS[token as TokenSymbol]?.address;
+    
+    if (!tokenAddress) throw new Error('Invalid token address');
+    
+    const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+
+    writeContract({
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: 'approve',
+      args: [DEX_CONFIG.ROUTER_ADDRESS as Address, maxApproval],
+    });
+  }, [address, isConnected, writeContract]);
+
   return {
     swap,
+    swapViaRouter,
+    findSwapPath,
     addLiquidity,
     removeLiquidity,
     approveToken,
     approveForSwap,
+    approveRouter,
     isPending,
     isConfirming,
     isSuccess,
@@ -482,6 +632,115 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
   const poolAddress = usePoolAddress(tokenA, tokenB);
   const publicClient = usePublicClient();
   
+  // Get token addresses
+  const tokenAAddr: Address | undefined = typeof tokenA === 'string' && isAddress(tokenA)
+    ? tokenA
+    : typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]
+    ? TOKENS[tokenA as TokenSymbol].address
+    : undefined;
+
+  const tokenBAddr: Address | undefined = typeof tokenB === 'string' && isAddress(tokenB)
+    ? tokenB
+    : typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
+    ? TOKENS[tokenB as TokenSymbol].address
+    : undefined;
+
+  // Try Router if no direct pool exists - find path first
+  const shouldUseRouter = !poolAddress && DEX_CONFIG.ROUTER_ADDRESS && tokenAAddr && tokenBAddr;
+  
+  // Find swap path using Router (for multi-hop) - with error handling
+  const { data: routerPath, error: routerPathError, isLoading: isLoadingRouterPath, refetch: refetchRouterPath } = useReadContract({
+    address: shouldUseRouter ? (DEX_CONFIG.ROUTER_ADDRESS as Address) : undefined,
+    abi: ROUTER_ABI,
+    functionName: 'findBestPath',
+    args: tokenAAddr && tokenBAddr ? [tokenAAddr, tokenBAddr] : undefined,
+    query: { 
+      enabled: shouldUseRouter && !!tokenAAddr && !!tokenBAddr,
+      retry: 2, // Retry twice
+      retryDelay: 500, // Wait 500ms between retries
+      staleTime: 0, // Don't cache - always refetch
+      gcTime: 0, // Don't keep in cache
+    },
+  });
+  
+  // Check if USDC pools exist for manual path fallback (only if needed)
+  const tokenASymbol = typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol] ? tokenA as TokenSymbol : null;
+  const tokenBSymbol = typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol] ? tokenB as TokenSymbol : null;
+  
+  const usdcPool1 = usePoolAddress(
+    tokenASymbol || ('USDC' as TokenSymbol),
+    'USDC'
+  );
+  const usdcPool2 = usePoolAddress(
+    'USDC',
+    tokenBSymbol || ('USDC' as TokenSymbol)
+  );
+  
+  
+  // Fallback: Manual path finding via USDC - use immediately if pools exist
+  const manualPath = useMemo(() => {
+    if (!shouldUseRouter) return null;
+    
+    // If Router found a path, use it (prefer Router path)
+    if (routerPath && Array.isArray(routerPath) && routerPath.length >= 2) {
+      return null; // Router path exists, don't use manual
+    }
+    
+    // If Router returned empty array (no path found), use manual path if pools exist
+    // Also use manual path immediately if both USDC pools exist (don't wait for Router)
+    // This ensures we can calculate output even if Router is slow or fails
+    const routerReturnedEmpty = routerPath && Array.isArray(routerPath) && routerPath.length === 0;
+    const routerNotFound = routerPathError || routerReturnedEmpty;
+    
+    if ((routerNotFound || !routerPath) && usdcPool1 && usdcPool2 && tokenAAddr && tokenBAddr) {
+      return [tokenAAddr, DEX_CONFIG.USDC_ADDRESS, tokenBAddr];
+    }
+    
+    return null;
+  }, [shouldUseRouter, routerPath, routerPathError, tokenAAddr, tokenBAddr, usdcPool1, usdcPool2]);
+  
+  // Refetch Router path when token addresses change (to clear any cached errors)
+  useEffect(() => {
+    if (shouldUseRouter && tokenAAddr && tokenBAddr && !isLoadingRouterPath) {
+      // Always refetch when tokens change to ensure fresh path
+      const timer = setTimeout(() => {
+        refetchRouterPath();
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldUseRouter, tokenAAddr, tokenBAddr, refetchRouterPath, isLoadingRouterPath]);
+  
+  // Use Router path or manual path
+  const finalRouterPath = routerPath || manualPath;
+  
+  // Get Router output amounts for multi-hop swaps (using the found path)
+  const { data: routerAmounts, error: routerAmountsError, refetch: refetchRouterAmounts } = useReadContract({
+    address: shouldUseRouter && finalRouterPath ? (DEX_CONFIG.ROUTER_ADDRESS as Address) : undefined,
+    abi: ROUTER_ABI,
+    functionName: 'getAmountsOut',
+    args: finalRouterPath && tokenAAddr && amountIn && parseFloat(amountIn) > 0
+      ? [parseUnits(amountIn, typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol] ? TOKENS[tokenA as TokenSymbol].decimals : 18), finalRouterPath as Address[]]
+      : undefined,
+    query: { 
+      enabled: shouldUseRouter && !!finalRouterPath && !!tokenAAddr && !!amountIn && parseFloat(amountIn) > 0,
+      retry: 3, // Increased retries
+      retryDelay: 1000,
+      staleTime: 0, // Don't cache - always refetch when amount changes
+      gcTime: 0,
+    },
+  });
+  
+  
+  // Refetch amounts when path or amount changes
+  useEffect(() => {
+    if (shouldUseRouter && finalRouterPath && amountIn && parseFloat(amountIn) > 0) {
+      const timer = setTimeout(() => {
+        refetchRouterAmounts();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldUseRouter, finalRouterPath, amountIn, refetchRouterAmounts]);
+  
   // WORKAROUND: Use contract's stored reserves instead of actual balances
   // This matches what the contract will actually calculate (even if reserves are stale)
   // The contract's swap functions use stored reserves, not actual balances
@@ -499,21 +758,6 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     query: { enabled: !!poolAddress },
   });
   
-  // Read pool's token addresses to map reserves correctly
-  
-  // Get token addresses
-  const tokenAAddr: Address | undefined = typeof tokenA === 'string' && isAddress(tokenA)
-    ? tokenA
-    : typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol]
-    ? TOKENS[tokenA as TokenSymbol].address
-    : undefined;
-
-  const tokenBAddr: Address | undefined = typeof tokenB === 'string' && isAddress(tokenB)
-    ? tokenB
-    : typeof tokenB === 'string' && TOKENS[tokenB as TokenSymbol]
-    ? TOKENS[tokenB as TokenSymbol].address
-    : undefined;
-
   // CRITICAL: Read pool's actual tokenA and tokenB to match reserves correctly
   const { data: poolTokenA } = useReadContract({
     address: poolAddress || undefined,
@@ -562,7 +806,26 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
 
   // CRITICAL: Use contract's stored reserves (what contract will actually use)
   // Not actual ERC20 balances, because contract's swap uses stored reserves!
+  // OR use Router amounts for multi-hop swaps
   const calculatedAmountOut = useMemo(() => {
+    // If using Router (multi-hop), use Router amounts
+    if (shouldUseRouter && routerAmounts && Array.isArray(routerAmounts) && routerAmounts.length > 0) {
+      const finalAmount = routerAmounts[routerAmounts.length - 1];
+      return formatUnits(finalAmount as bigint, tokenBDecimals);
+    }
+    
+    // If Router is loading or path is being calculated, return empty (UI will show loading)
+    if (shouldUseRouter && (isLoadingRouterPath || (finalRouterPath && !routerAmounts))) {
+      return ''; // Empty means "calculating" - will trigger UI loading state
+    }
+    
+    // If Router path failed but we have a manual path, the routerAmounts query should handle it
+    // Just return empty for now to let the query complete
+    if (shouldUseRouter && manualPath && manualPath.length >= 2 && !routerAmounts) {
+      return ''; // Empty means "calculating" - routerAmounts query will populate
+    }
+    
+    // Otherwise, use direct pool calculation
     if (!amountInValue || amountInValue <= 0 || !contractReserveA || !contractReserveB || !poolTokenA || !poolTokenB) {
       return '0';
     }
@@ -588,7 +851,24 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     const amountOut = numerator / denominator;
 
     return amountOut.toFixed(18); // Return as string with enough precision
-  }, [amountInValue, contractReserveA, contractReserveB, isSwappingPoolTokenA, poolTokenA, poolTokenB, poolTokenADecimals, poolTokenBDecimals, poolAddress]);
+  }, [
+    amountInValue, 
+    contractReserveA, 
+    contractReserveB, 
+    isSwappingPoolTokenA, 
+    poolTokenA, 
+    poolTokenB, 
+    poolTokenADecimals, 
+    poolTokenBDecimals, 
+    poolAddress,
+    // Router-related dependencies
+    shouldUseRouter,
+    routerAmounts,
+    finalRouterPath,
+    isLoadingRouterPath,
+    manualPath,
+    tokenBDecimals,
+  ]);
 
   return calculatedAmountOut;
 }
@@ -626,15 +906,36 @@ export function useTokenBalance(token: TokenSymbol | null | undefined) {
   return formatUnits(balance, tokenInfo.decimals);
 }
 
-export function useTokenAllowance(token: TokenSymbol, spender: Address | null) {
+// Get token balance by address (for custom tokens)
+export function useTokenBalanceByAddress(tokenAddress: Address | string | null | undefined, decimals: number = 18) {
+  const { address, isConnected, chainId } = useAccount();
+  const isArcTestnet = chainId === 5042002;
+  
+  const { data: balance } = useReadContract({
+    address: tokenAddress as Address | undefined,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isConnected && !!tokenAddress && isArcTestnet && isAddress(tokenAddress as string) },
+  });
+
+  if (!balance) return '0';
+  return formatUnits(balance, decimals);
+}
+
+export function useTokenAllowance(token: TokenSymbol | Address, spender: Address | null) {
   const { address, isConnected } = useAccount();
-  const tokenInfo = TOKENS[token];
+  // Handle both TokenSymbol and Address
+  const tokenAddress: Address | undefined = typeof token === 'string' && isAddress(token)
+    ? token as Address
+    : TOKENS[token as TokenSymbol]?.address;
+  
   const { data: allowance } = useReadContract({
-    address: tokenInfo.address,
+    address: tokenAddress,
     abi: ERC20_ABI,
     functionName: 'allowance',
     args: address && spender ? [address, spender] : undefined,
-    query: { enabled: !!address && !!spender && isConnected },
+    query: { enabled: !!address && !!spender && isConnected && !!tokenAddress },
   });
 
   return allowance || 0n;

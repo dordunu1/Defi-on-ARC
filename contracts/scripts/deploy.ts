@@ -54,73 +54,53 @@ async function main() {
 
   // Deploy tokens if requested
   if (deploymentType === "tokens" || deploymentType === "all") {
-    console.log("=== Deploying Tokens (SRAC, RACS, SACS) ===");
+    console.log("=== Deploying Tokens (KITTY, DOGG) ===");
     
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     
-    // Deploy SRAC token
-    console.log("\nDeploying SRAC token...");
-    const srac = await MockERC20.deploy(
-      "Simple RAC Token",
-      "SRAC",
+    // Deploy KITTY token
+    console.log("\nDeploying KITTY token...");
+    const kitty = await MockERC20.deploy(
+      "Kitty Token",
+      "KITTY",
       18
     );
-    await srac.waitForDeployment();
-    const sracAddress = await srac.getAddress();
-    console.log("✓ SRAC deployed to:", sracAddress);
-    deploymentInfo.tokens.SRAC = {
-      name: "Simple RAC Token",
-      symbol: "SRAC",
-      address: sracAddress,
+    await kitty.waitForDeployment();
+    const kittyAddress = await kitty.getAddress();
+    console.log("✓ KITTY deployed to:", kittyAddress);
+    deploymentInfo.tokens.KITTY = {
+      name: "Kitty Token",
+      symbol: "KITTY",
+      address: kittyAddress,
       decimals: 18,
       totalSupply: "10000000",
     };
 
-    // Deploy RACS token
-    console.log("\nDeploying RACS token...");
-    const racs = await MockERC20.deploy(
-      "RAC Swap Token",
-      "RACS",
+    // Deploy DOGG token
+    console.log("\nDeploying DOGG token...");
+    const dogg = await MockERC20.deploy(
+      "Dogg Token",
+      "DOGG",
       18
     );
-    await racs.waitForDeployment();
-    const racsAddress = await racs.getAddress();
-    console.log("✓ RACS deployed to:", racsAddress);
-    deploymentInfo.tokens.RACS = {
-      name: "RAC Swap Token",
-      symbol: "RACS",
-      address: racsAddress,
-      decimals: 18,
-      totalSupply: "10000000",
-    };
-
-    // Deploy SACS token
-    console.log("\nDeploying SACS token...");
-    const sacs = await MockERC20.deploy(
-      "Swap ACR Token",
-      "SACS",
-      18
-    );
-    await sacs.waitForDeployment();
-    const sacsAddress = await sacs.getAddress();
-    console.log("✓ SACS deployed to:", sacsAddress);
-    deploymentInfo.tokens.SACS = {
-      name: "Swap ACR Token",
-      symbol: "SACS",
-      address: sacsAddress,
+    await dogg.waitForDeployment();
+    const doggAddress = await dogg.getAddress();
+    console.log("✓ DOGG deployed to:", doggAddress);
+    deploymentInfo.tokens.DOGG = {
+      name: "Dogg Token",
+      symbol: "DOGG",
+      address: doggAddress,
       decimals: 18,
       totalSupply: "10000000",
     };
 
     // Verify supply
-    const sracSupply = await srac.totalSupply();
-    const racsSupply = await racs.totalSupply();
-    const sacsSupply = await sacs.totalSupply();
+    const kittySupply = await kitty.totalSupply();
+    const doggSupply = await dogg.totalSupply();
     
     console.log("\n=== Token Supply Verification ===");
-    console.log(`SRAC Supply: ${ethers.formatEther(sracSupply)} (10,000,000)`);
-    console.log(`RACS Supply: ${ethers.formatEther(racsSupply)} (10,000,000)`);
-    console.log(`SACS Supply: ${ethers.formatEther(sacsSupply)} (10,000,000)`);
+    console.log(`KITTY Supply: ${ethers.formatEther(kittySupply)} (10,000,000)`);
+    console.log(`DOGG Supply: ${ethers.formatEther(doggSupply)} (10,000,000)`);
     console.log("\n");
   }
 
@@ -163,25 +143,26 @@ async function main() {
 
   // Summary
   console.log("\n=== DEPLOYMENT SUMMARY ===");
-  if (deploymentInfo.tokens.SRAC) {
+  if (deploymentInfo.tokens.KITTY) {
     console.log("\nTokens:");
-    console.log("  SRAC:", deploymentInfo.tokens.SRAC.address);
-    console.log("  RACS:", deploymentInfo.tokens.RACS.address);
-    console.log("  SACS:", deploymentInfo.tokens.SACS.address);
+    console.log("  KITTY:", deploymentInfo.tokens.KITTY.address);
+    console.log("  DOGG:", deploymentInfo.tokens.DOGG.address);
   }
   if (deploymentInfo.factory) {
     console.log("\nFactory:", deploymentInfo.factory.address);
   }
   
   console.log("\n=== NEXT STEPS ===");
-  if (deploymentInfo.tokens.SRAC) {
-    console.log("1. Update DEX_CONFIG.TOKENS in src/config/dex.ts with token addresses above");
+  if (deploymentInfo.tokens.KITTY) {
+    console.log("1. Update TOKENS record in src/hooks/useDEX.ts with token addresses above");
+    console.log("2. Add KITTY and DOGG to TokenSymbol type in src/hooks/useDEX.ts");
+    console.log("3. Add logo mappings in src/utils/tokenLogos.ts (cat.png for KITTY, dog.png for DOGG)");
   }
   if (deploymentInfo.factory) {
-    console.log(`${deploymentInfo.tokens.SRAC ? "2" : "1"}. Update FACTORY_ADDRESS in src/config/dex.ts`);
-    console.log(`${deploymentInfo.tokens.SRAC ? "3" : "2"}. Create pools via the UI using the 'Create Pool' tab`);
-    console.log(`${deploymentInfo.tokens.SRAC ? "4" : "3"}. Add liquidity through the 'Liquidity' tab`);
-    console.log(`${deploymentInfo.tokens.SRAC ? "5" : "4"}. Start trading!`);
+    console.log(`${deploymentInfo.tokens.KITTY ? "2" : "1"}. Update FACTORY_ADDRESS in src/config/dex.ts`);
+    console.log(`${deploymentInfo.tokens.KITTY ? "3" : "2"}. Create pools via the UI using the 'Create Pool' tab`);
+    console.log(`${deploymentInfo.tokens.KITTY ? "4" : "3"}. Add liquidity through the 'Liquidity' tab`);
+    console.log(`${deploymentInfo.tokens.KITTY ? "5" : "4"}. Start trading!`);
   }
 }
 

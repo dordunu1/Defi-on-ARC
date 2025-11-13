@@ -1,14 +1,22 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlusCircle, AlertCircle, CheckCircle2, Loader2, ArrowRight, X, ChevronDown } from 'lucide-react';
+import { PlusCircle, AlertCircle, CheckCircle2, Loader2, ArrowRight, X, ChevronDown, Search } from 'lucide-react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseUnits, isAddress, formatUnits, type Address } from 'viem';
 import { FACTORY_ABI, POOL_ABI, ERC20_ABI } from '../config/abis';
 import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
-import { useDEX, useTokenBalance, usePoolReserves, TOKENS, type TokenSymbol, getPoolAddress } from '../hooks/useDEX';
+import { useDEX, useTokenBalance, usePoolReserves, TOKENS, type TokenSymbol, getPoolAddress, useTokenBalanceByAddress } from '../hooks/useDEX';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['SRAC', 'RACS', 'SACS', 'USDC'];
+const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', /* 'EURC', */ 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // USDC first // EURC commented out - liquidity issue
+
+// Custom token interface for ERC20 addresses
+interface CustomToken {
+  address: Address;
+  symbol: string;
+  name: string;
+  decimals: number;
+}
 
 // Allowed wallet addresses for pool creation
 const ALLOWED_WALLETS = [
@@ -28,11 +36,13 @@ export default function CreatePool() {
   const [amountB, setAmountB] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showTokenSelector, setShowTokenSelector] = useState<'A' | 'B' | null>(null);
-  const [customAddressA, setCustomAddressA] = useState('');
-  const [customAddressB, setCustomAddressB] = useState('');
-  const [tokenAInteracted, setTokenAInteracted] = useState(false);
-  const [tokenBInteracted, setTokenBInteracted] = useState(false);
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
+  
+  // Custom tokens state
+  const [customTokens, setCustomTokens] = useState<Map<Address, CustomToken>>(new Map());
+  const [addressInput, setAddressInput] = useState('');
+  const [isFetchingToken, setIsFetchingToken] = useState(false);
+  const [tokenFetchError, setTokenFetchError] = useState<string | null>(null);
   
   const isArcTestnet = chainId === 5042002;
 
@@ -58,8 +68,106 @@ export default function CreatePool() {
     }
   }, [showTokenSelector]);
 
+  // Fetch token info from ERC20 contract
+  const fetchTokenInfo = useCallback(async (tokenAddress: Address): Promise<CustomToken | null> => {
+    if (!publicClient) return null;
+    
+    setIsFetchingToken(true);
+    setTokenFetchError(null);
+    
+    try {
+      // Check if we already have this token cached
+      if (customTokens.has(tokenAddress)) {
+        setIsFetchingToken(false);
+        return customTokens.get(tokenAddress) || null;
+      }
+      
+      // Fetch token info from contract
+      const [symbol, name, decimals] = await Promise.all([
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'symbol',
+        }) as Promise<string>,
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'name',
+        }) as Promise<string>,
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: 'decimals',
+        }) as Promise<number>,
+      ]);
+      
+      const tokenInfo: CustomToken = {
+        address: tokenAddress,
+        symbol: symbol || 'UNKNOWN',
+        name: name || 'Unknown Token',
+        decimals: decimals || 18,
+      };
+      
+      // Cache the token
+      setCustomTokens(prev => new Map(prev).set(tokenAddress, tokenInfo));
+      setIsFetchingToken(false);
+      return tokenInfo;
+    } catch (err: any) {
+      setIsFetchingToken(false);
+      setTokenFetchError(err?.message || 'Failed to fetch token info. Make sure the address is a valid ERC20 token on Arc Testnet.');
+      return null;
+    }
+  }, [publicClient, customTokens]);
+  
+  // Handle address input and fetch token automatically
+  const handleAddressInput = useCallback(async (input: string, type: 'A' | 'B') => {
+    setAddressInput(input);
+    setTokenFetchError(null);
+    
+    // Auto-fetch when valid address is detected
+    if (input && isAddress(input)) {
+      // Check authorization before proceeding
+      if (isConnected && !isAuthorized) {
+        setShowUnauthorizedModal(true);
+        setAddressInput('');
+        return;
+      }
+      
+      const tokenInfo = await fetchTokenInfo(input as Address);
+      if (tokenInfo) {
+        // Auto-select the token after fetching
+        if (type === 'A') {
+          setTokenA(tokenInfo.address);
+        } else {
+          setTokenB(tokenInfo.address);
+        }
+        setAddressInput('');
+        setShowTokenSelector(null);
+      }
+    }
+  }, [fetchTokenInfo, isConnected, isAuthorized]);
+  
+  // Get token display info (symbol or custom token symbol)
+  const getTokenDisplay = useCallback((tokenAddress: Address | string): { symbol: string; name?: string; isCustom: boolean } => {
+    if (typeof tokenAddress === 'string' && isAddress(tokenAddress)) {
+      const customToken = customTokens.get(tokenAddress as Address);
+      if (customToken) {
+        return { symbol: customToken.symbol, name: customToken.name, isCustom: true };
+      }
+      // Try to find in TOKENS
+      const tokenEntry = Object.entries(TOKENS).find(
+        ([_, info]) => info.address.toLowerCase() === tokenAddress.toLowerCase()
+      );
+      if (tokenEntry) {
+        return { symbol: tokenEntry[0], isCustom: false };
+      }
+      return { symbol: `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`, isCustom: true };
+    }
+    return { symbol: 'USDC', isCustom: false };
+  }, [customTokens]);
+
   // Select token from dropdown
-  const selectToken = (tokenSymbol: TokenSymbol, type: 'A' | 'B') => {
+  const selectToken = (tokenSymbol: TokenSymbol | Address, type: 'A' | 'B') => {
     // Check authorization before proceeding
     if (isConnected && !isAuthorized) {
       setShowUnauthorizedModal(true);
@@ -67,17 +175,84 @@ export default function CreatePool() {
       return;
     }
 
-    const tokenAddress = TOKENS[tokenSymbol].address;
+    const tokenAddress = typeof tokenSymbol === 'string' && isAddress(tokenSymbol)
+      ? tokenSymbol as Address
+      : TOKENS[tokenSymbol as TokenSymbol].address;
+      
     if (type === 'A') {
       setTokenA(tokenAddress);
-      setCustomAddressA('');
-      setTokenAInteracted(true);
     } else {
       setTokenB(tokenAddress);
-      setCustomAddressB('');
-      setTokenBInteracted(true);
     }
     setShowTokenSelector(null);
+    setAddressInput('');
+    setTokenFetchError(null);
+  };
+  
+  // Token item component for predefined tokens
+  const TokenItem = ({ token, isSelected, onSelect, type }: { token: TokenSymbol; isSelected: boolean; onSelect: () => void; type: 'A' | 'B' }) => {
+    const tokenBalance = useTokenBalance(token);
+    return (
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        whileHover={{ scale: 1.02, x: 4 }}
+        whileTap={{ scale: 0.98 }}
+        className={`w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 rounded-lg min-h-[60px] ${
+          isSelected ? 'bg-orange-50' : ''
+        }`}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <TokenLogo token={token} size={32} className="flex-shrink-0" address={undefined} />
+          <div className="flex flex-col items-start justify-center flex-1 min-w-0">
+            <span className="font-semibold text-gray-900 leading-tight">{token}</span>
+            {TOKENS[token] && (
+              <span className="text-xs text-gray-500 leading-tight">{TOKENS[token].address.slice(0, 6)}...{TOKENS[token].address.slice(-4)}</span>
+            )}
+          </div>
+        </div>
+        {isConnected && parseFloat(tokenBalance) > 0 && (
+          <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+            {parseFloat(tokenBalance).toFixed(4)}
+          </span>
+        )}
+      </motion.button>
+    );
+  };
+
+  // Custom token item component
+  const CustomTokenItem = ({ token, isSelected, onSelect }: { token: CustomToken; isSelected: boolean; onSelect: () => void }) => {
+    const tokenBalance = useTokenBalanceByAddress(token.address, token.decimals);
+    return (
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        whileHover={{ scale: 1.02, x: 4 }}
+        whileTap={{ scale: 0.98 }}
+        className={`w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-gray-50 rounded-lg min-h-[60px] ${
+          isSelected ? 'bg-orange-50' : ''
+        }`}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <TokenLogo token={token.symbol} size={32} className="flex-shrink-0" address={token.address} />
+          <div className="flex flex-col items-start justify-center flex-1 min-w-0">
+            <span className="font-semibold text-gray-900 leading-tight">{token.symbol}</span>
+            {token.address && (
+              <span className="text-xs text-gray-500 leading-tight">{token.address.slice(0, 6)}...{token.address.slice(-4)}</span>
+            )}
+          </div>
+        </div>
+        {isConnected && parseFloat(tokenBalance) > 0 && (
+          <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+            {parseFloat(tokenBalance).toFixed(4)}
+          </span>
+        )}
+      </motion.button>
+    );
   };
 
   // Fetch balances for all tokens when dropdown is open
@@ -876,11 +1051,21 @@ export default function CreatePool() {
                     >
                       <div className="flex items-center gap-2">
                         {tokenA && isValidA && (
-                          <TokenLogo token={symbolA as string || '?'} size={24} className="flex-shrink-0" />
+                          <TokenLogo 
+                            token={getTokenDisplay(tokenA).symbol} 
+                            size={24} 
+                            className="flex-shrink-0"
+                            address={getTokenDisplay(tokenA).isCustom ? tokenA : undefined}
+                          />
                         )}
-                        <span className="text-sm font-medium text-gray-900">
-                          {tokenA && isValidA && symbolA ? symbolA : 'Select token'}
-                        </span>
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-medium text-gray-900">
+                            {tokenA && isValidA ? getTokenDisplay(tokenA).symbol : 'Select token'}
+                          </span>
+                          {tokenA && isValidA && getTokenDisplay(tokenA).name && (
+                            <span className="text-xs text-gray-500">{getTokenDisplay(tokenA).name}</span>
+                          )}
+                        </div>
                       </div>
                       <ChevronDown className="w-4 h-4 text-gray-600" />
                     </motion.button>
@@ -892,63 +1077,70 @@ export default function CreatePool() {
                           exit={{ opacity: 0, y: -10, scale: 0.95 }}
                           transition={{ duration: 0.2 }}
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-50 max-h-[300px] overflow-y-auto scrollbar-hide"
+                          className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-50 min-w-[400px] max-h-[600px] overflow-hidden flex flex-col"
                         >
-                          {AVAILABLE_TOKENS.map((tokenSymbol) => {
-                            const balance = getTokenBalance(tokenSymbol);
-                            return (
-                              <motion.button
-                                key={tokenSymbol}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  selectToken(tokenSymbol, 'A');
-                                }}
-                                whileHover={{ scale: 1.02, x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                className={`w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl ${
-                                  tokenA === TOKENS[tokenSymbol].address ? 'bg-orange-50' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <TokenLogo token={tokenSymbol} size={32} className="flex-shrink-0" />
-                                  <span className="font-semibold text-gray-900">{tokenSymbol}</span>
-                                </div>
-                                {address && isConnected && (
-                                  <span className="text-xs text-gray-500 whitespace-nowrap">
-                                    {balance && !isNaN(parseFloat(balance)) ? parseFloat(balance).toFixed(4) : '0.0000'}
-                                  </span>
-                                )}
-                              </motion.button>
-                            );
-                          })}
+                          {/* Address Input Section */}
+                          <div className="p-4 border-b border-gray-200">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Search className="w-5 h-5 text-gray-400" />
+                              <span className="text-sm font-medium text-gray-700">Paste ERC20 Address</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={addressInput}
+                              onChange={(e) => handleAddressInput(e.target.value, 'A')}
+                              placeholder="0x..."
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {isFetchingToken && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
+                                <span className="text-xs text-gray-500">Fetching token info...</span>
+                              </div>
+                            )}
+                            {tokenFetchError && (
+                              <p className="text-xs text-red-500 mt-2">{tokenFetchError}</p>
+                            )}
+                          </div>
+                          
+                          {/* Token List */}
+                          <div className="overflow-y-auto max-h-[400px] scrollbar-hide">
+                            {/* Predefined Tokens */}
+                            <div className="p-2">
+                              <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
+                              {AVAILABLE_TOKENS.map((tokenSymbol) => (
+                                <TokenItem
+                                  key={tokenSymbol}
+                                  token={tokenSymbol}
+                                  isSelected={tokenA === TOKENS[tokenSymbol].address}
+                                  onSelect={() => selectToken(tokenSymbol, 'A')}
+                                  type="A"
+                                />
+                              ))}
+                            </div>
+                            
+                            {/* Custom Tokens */}
+                            {Array.from(customTokens.values()).length > 0 && (
+                              <div className="p-2 border-t border-gray-200">
+                                <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Custom Tokens</p>
+                                {Array.from(customTokens.values()).map((token) => (
+                                  <CustomTokenItem
+                                    key={token.address}
+                                    token={token}
+                                    isSelected={tokenA === token.address}
+                                    onSelect={() => selectToken(token.address, 'A')}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
-                  
-                  {/* Custom Address Input */}
-                  <input
-                    type="text"
-                    value={customAddressA}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setCustomAddressA(value);
-                      if (isAddress(value)) {
-                        // Check authorization before setting token
-                        if (isConnected && !isAuthorized) {
-                          setShowUnauthorizedModal(true);
-                          return;
-                        }
-                        setTokenA(value);
-                        setTokenAInteracted(true);
-                        setError(null);
-                      }
-                    }}
-                    placeholder="Or paste custom address (0x...)"
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  />
                 </div>
-                {isValidA && tokenAInteracted && (symbolA || nameA) && (
+                {isValidA && (symbolA || nameA) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -956,10 +1148,14 @@ export default function CreatePool() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <TokenLogo token={(symbolA as string) || '?'} size={32} className="flex-shrink-0" />
+                      <TokenLogo 
+                        token={getTokenDisplay(tokenA).symbol || '?'} 
+                        size={32} 
+                        className="flex-shrink-0"
+                        address={getTokenDisplay(tokenA).isCustom ? tokenA : undefined}
+                      />
                       <div>
-                        <div className="text-sm font-semibold text-gray-900">{symbolA || 'Unknown'}</div>
-                        {nameA && <div className="text-xs text-gray-500">{nameA}</div>}
+                        <div className="text-sm font-semibold text-gray-900">{getTokenDisplay(tokenA).symbol || 'Unknown'}</div>
                       </div>
                     </div>
                     {address && isConnected && (
@@ -992,11 +1188,21 @@ export default function CreatePool() {
                     >
                       <div className="flex items-center gap-2">
                         {tokenB && isValidB && (
-                          <TokenLogo token={symbolB as string || 'USDC'} size={24} className="flex-shrink-0" />
+                          <TokenLogo 
+                            token={getTokenDisplay(tokenB).symbol} 
+                            size={24} 
+                            className="flex-shrink-0"
+                            address={getTokenDisplay(tokenB).isCustom ? tokenB : undefined}
+                          />
                         )}
-                        <span className="text-sm font-medium text-gray-900">
-                          {tokenB && isValidB && symbolB ? symbolB : 'USDC'}
-                        </span>
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-medium text-gray-900">
+                            {tokenB && isValidB ? getTokenDisplay(tokenB).symbol : 'USDC'}
+                          </span>
+                          {tokenB && isValidB && getTokenDisplay(tokenB).name && (
+                            <span className="text-xs text-gray-500">{getTokenDisplay(tokenB).name}</span>
+                          )}
+                        </div>
                       </div>
                       <ChevronDown className="w-4 h-4 text-gray-600" />
                     </motion.button>
@@ -1008,64 +1214,70 @@ export default function CreatePool() {
                           exit={{ opacity: 0, y: -10, scale: 0.95 }}
                           transition={{ duration: 0.2 }}
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-50 max-h-[300px] overflow-y-auto scrollbar-hide"
+                          className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-50 min-w-[400px] max-h-[600px] overflow-hidden flex flex-col"
                         >
-                          {/* Show all tokens for Token B */}
-                          {AVAILABLE_TOKENS.map((tokenSymbol) => {
-                            const balance = getTokenBalance(tokenSymbol);
-                            return (
-                              <motion.button
-                                key={tokenSymbol}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  selectToken(tokenSymbol, 'B');
-                                }}
-                                whileHover={{ scale: 1.02, x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                className={`w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl ${
-                                  tokenB === TOKENS[tokenSymbol].address ? 'bg-orange-50' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <TokenLogo token={tokenSymbol} size={32} className="flex-shrink-0" />
-                                  <span className="font-semibold text-gray-900">{tokenSymbol}</span>
-                                </div>
-                                {address && isConnected && (
-                                  <span className="text-xs text-gray-500 whitespace-nowrap">
-                                    {balance && !isNaN(parseFloat(balance)) ? parseFloat(balance).toFixed(4) : '0.0000'}
-                                  </span>
-                                )}
-                              </motion.button>
-                            );
-                          })}
+                          {/* Address Input Section */}
+                          <div className="p-4 border-b border-gray-200">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Search className="w-5 h-5 text-gray-400" />
+                              <span className="text-sm font-medium text-gray-700">Paste ERC20 Address</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={addressInput}
+                              onChange={(e) => handleAddressInput(e.target.value, 'B')}
+                              placeholder="0x..."
+                              className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {isFetchingToken && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <Loader2 className="w-4 h-4 animate-spin text-orange-500" />
+                                <span className="text-xs text-gray-500">Fetching token info...</span>
+                              </div>
+                            )}
+                            {tokenFetchError && (
+                              <p className="text-xs text-red-500 mt-2">{tokenFetchError}</p>
+                            )}
+                          </div>
+                          
+                          {/* Token List */}
+                          <div className="overflow-y-auto max-h-[400px] scrollbar-hide">
+                            {/* Predefined Tokens */}
+                            <div className="p-2">
+                              <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
+                              {AVAILABLE_TOKENS.map((tokenSymbol) => (
+                                <TokenItem
+                                  key={tokenSymbol}
+                                  token={tokenSymbol}
+                                  isSelected={tokenB === TOKENS[tokenSymbol].address}
+                                  onSelect={() => selectToken(tokenSymbol, 'B')}
+                                  type="B"
+                                />
+                              ))}
+                            </div>
+                            
+                            {/* Custom Tokens */}
+                            {Array.from(customTokens.values()).length > 0 && (
+                              <div className="p-2 border-t border-gray-200">
+                                <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Custom Tokens</p>
+                                {Array.from(customTokens.values()).map((token) => (
+                                  <CustomTokenItem
+                                    key={token.address}
+                                    token={token}
+                                    isSelected={tokenB === token.address}
+                                    onSelect={() => selectToken(token.address, 'B')}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
-                  
-                  {/* Custom Address Input for Token B */}
-                  <input
-                    type="text"
-                    value={customAddressB}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setCustomAddressB(value);
-                      if (isAddress(value)) {
-                        // Check authorization before setting token
-                        if (isConnected && !isAuthorized) {
-                          setShowUnauthorizedModal(true);
-                          return;
-                        }
-                        setTokenB(value);
-                        setTokenBInteracted(true);
-                        setError(null);
-                      }
-                    }}
-                    placeholder="Or paste custom address (0x...)"
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  />
                 </div>
-                {isValidB && tokenBInteracted && (symbolB || nameB) && (
+                {isValidB && (symbolB || nameB) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1073,10 +1285,14 @@ export default function CreatePool() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <TokenLogo token={(symbolB as string) || '?'} size={32} className="flex-shrink-0" />
+                      <TokenLogo 
+                        token={getTokenDisplay(tokenB).symbol} 
+                        size={32} 
+                        className="flex-shrink-0"
+                        address={getTokenDisplay(tokenB).isCustom ? tokenB : undefined}
+                      />
                       <div>
-                        <div className="text-sm font-semibold text-gray-900">{symbolB || 'Unknown'}</div>
-                        {nameB && <div className="text-xs text-gray-500">{nameB}</div>}
+                        <div className="text-sm font-semibold text-gray-900">{getTokenDisplay(tokenB).symbol || 'Unknown'}</div>
                       </div>
                     </div>
                     {address && isConnected && (
@@ -1183,7 +1399,12 @@ export default function CreatePool() {
                     className="w-full px-3 sm:px-4 py-2 sm:py-2.5 pr-20 sm:pr-24 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm sm:text-base"
                   />
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 sm:gap-2">
-                    <TokenLogo token={(symbolA as string) || '?'} size={20} className="sm:w-6 sm:h-6" />
+                    <TokenLogo 
+                      token={getTokenDisplay(tokenA).symbol || '?'} 
+                      size={20} 
+                      className="sm:w-6 sm:h-6"
+                      address={getTokenDisplay(tokenA).isCustom ? tokenA : undefined}
+                    />
                     <span className="text-xs sm:text-sm font-medium text-gray-700">{symbolA || 'A'}</span>
                   </div>
                 </div>
@@ -1207,7 +1428,12 @@ export default function CreatePool() {
                     className="w-full px-3 sm:px-4 py-2 sm:py-2.5 pr-20 sm:pr-24 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm sm:text-base"
                   />
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 sm:gap-2">
-                    <TokenLogo token={(symbolB as string) || '?'} size={20} className="sm:w-6 sm:h-6" />
+                    <TokenLogo 
+                      token={getTokenDisplay(tokenB).symbol || '?'} 
+                      size={20} 
+                      className="sm:w-6 sm:h-6"
+                      address={getTokenDisplay(tokenB).isCustom ? tokenB : undefined}
+                    />
                     <span className="text-xs sm:text-sm font-medium text-gray-700">{symbolB || 'B'}</span>
                   </div>
                 </div>

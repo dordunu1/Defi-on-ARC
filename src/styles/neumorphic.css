@@ -1,0 +1,46 @@
+.neumorphic-toggle {
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+
+.neumorphic-toggle .toggle-slider {
+  display: inline-block;
+  width: 51px;
+  height: 31px;
+  background: #e5e7eb;
+  border-radius: 15.5px;
+  position: relative;
+  transition: background 0.4s cubic-bezier(0.4, 0, 0.2, 1), border 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1.5px solid #d1d5db;
+  cursor: pointer;
+}
+
+.neumorphic-toggle .toggle-slider:before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 26px;
+  height: 26px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.neumorphic-toggle .toggle-slider.on {
+  background: #34c759;
+  border-color: #34c759;
+}
+
+.neumorphic-toggle .toggle-slider.on:before {
+  left: 22px;
+  transform: translateX(0);
+}
+
+.neumorphic-toggle .toggle-slider:not(.on) {
+  background: #ff3b30;
+  border-color: #ff3b30;
+}
+

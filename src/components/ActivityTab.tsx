@@ -4,6 +4,7 @@ import { Activity, X, ChevronLeft } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { formatUnits, type Address } from 'viem';
 import { TOKENS } from '../hooks/useDEX';
+import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 
 interface SwapEvent {
@@ -241,7 +242,7 @@ export default function ActivityTab() {
                           </div>
 
                           <a
-                            href={`https://explorer.arc.network/tx/${event.tx_hash}`}
+                            href={`${DEX_CONFIG.EXPLORER_URL}/tx/${event.tx_hash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="mt-1.5 text-xs text-orange-600 hover:text-orange-700 flex items-center gap-1 w-fit"

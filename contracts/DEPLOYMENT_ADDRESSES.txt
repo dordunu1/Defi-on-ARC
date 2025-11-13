@@ -1,32 +1,22 @@
 {
   "network": "arc-testnet",
   "chainId": 5042002,
-  "deployedAt": "2025-11-03T07:23:05.537Z",
+  "deployedAt": "2025-11-13T21:18:34.910Z",
   "deployer": "0xd67F44f3CAD319fBb0308Dfb3bF2e1B31D4a93b6",
   "tokens": {
-    "SRAC": {
-      "name": "Simple RAC Token",
-      "symbol": "SRAC",
-      "address": "0x49cd69442dB073E7b94B0124e316AB7C68b95988",
+    "KITTY": {
+      "name": "Kitty Token",
+      "symbol": "KITTY",
+      "address": "0xe470A3Fb08345FD4a84c1b56Bd35bA7Be6297C3d",
       "decimals": 18,
       "totalSupply": "10000000"
     },
-    "RACS": {
-      "name": "RAC Swap Token",
-      "symbol": "RACS",
-      "address": "0x6E63e2cABECCe5c3A1c37b79A958a9542076A1e3",
-      "decimals": 18,
-      "totalSupply": "10000000"
-    },
-    "SACS": {
-      "name": "Swap ACR Token",
-      "symbol": "SACS",
-      "address": "0x63F856fBAB3535174bFaFD6EFd720C634d6FD458",
+    "DOGG": {
+      "name": "Dogg Token",
+      "symbol": "DOGG",
+      "address": "0x832Fa4331050045F911bD6d59EAD144A04B965cB",
       "decimals": 18,
       "totalSupply": "10000000"
     }
-  },
-  "factory": {
-    "address": "0x34A0b64a88BBd4Bf6Acba8a0Ff8F27c8aDD67E9C"
   }
 }

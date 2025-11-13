@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { AreaSeries, createChart, ColorType, type ISeriesApi } from 'lightweight-charts';
 import { usePriceHistory, type PriceDataPoint } from '../hooks/usePriceHistory';
-import { type TokenSymbol } from '../hooks/useDEX';
+import { type TokenSymbol, usePoolAddress } from '../hooks/useDEX';
 import { type Address } from 'viem';
 import { Loader2 } from 'lucide-react';
 
 interface PriceChartProps {
-  fromToken: TokenSymbol;
-  toToken: TokenSymbol;
+  fromToken: TokenSymbol | Address;
+  toToken: TokenSymbol | Address;
   poolAddress: Address | null;
+  swapPath?: TokenSymbol[] | null; // For multi-hop swaps
   height?: number;
 }
 
@@ -16,6 +17,7 @@ export default function PriceChart({
   fromToken,
   toToken,
   poolAddress,
+  swapPath,
   height = 300,
 }: PriceChartProps) {
   const [timeRange, setTimeRange] = useState<'1H' | '1D' | '1W' | '1M'>('1H');
@@ -24,13 +26,29 @@ export default function PriceChart({
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
   
-  const { priceData, isLoading, error } = usePriceHistory(fromToken, toToken, poolAddress, timeRange);
+  // For multi-hop swaps, use the first pool in the path for price chart
+  const isMultiHop = swapPath && Array.isArray(swapPath) && swapPath.length > 2 && swapPath[0] && swapPath[1];
+  
+  // Always call hooks (React rules) - use fallback values if not multi-hop
+  // Convert to TokenSymbol for usePoolAddress (it expects TokenSymbol)
+  const firstToken = (isMultiHop && swapPath[0]) ? swapPath[0] as TokenSymbol : (typeof fromToken === 'string' && fromToken.length <= 5 ? fromToken as TokenSymbol : 'USDC');
+  const secondToken = (isMultiHop && swapPath[1]) ? swapPath[1] as TokenSymbol : (typeof toToken === 'string' && toToken.length <= 5 ? toToken as TokenSymbol : 'USDC');
+  const firstPoolAddress = usePoolAddress(firstToken, secondToken);
+  
+  const chartFromToken = isMultiHop ? (swapPath[0] as TokenSymbol) : (typeof fromToken === 'string' && fromToken.length <= 5 ? fromToken as TokenSymbol : 'USDC');
+  const chartToToken = isMultiHop ? (swapPath[1] as TokenSymbol) : (typeof toToken === 'string' && toToken.length <= 5 ? toToken as TokenSymbol : 'USDC');
+  
+  // For multi-hop swaps, show chart for first hop (e.g., RACS/USDC)
+  // Otherwise use the direct pool address
+  const displayPoolAddress = isMultiHop ? firstPoolAddress : poolAddress;
+  
+  const { priceData, isLoading, error } = usePriceHistory(chartFromToken, chartToToken, displayPoolAddress, timeRange);
 
   // Initialize chart when container becomes available
   // This effect needs to run whenever the container might become available
   useEffect(() => {
     // Don't initialize if we don't have required props
-    if (!poolAddress || isLoading || error) {
+    if (!displayPoolAddress || isLoading || error) {
       return;
     }
 
@@ -162,7 +180,7 @@ export default function PriceChart({
       }
       setChartReady(false);
     };
-  }, [poolAddress, isLoading, error, height]); // Re-run when container becomes available
+  }, [displayPoolAddress, isLoading, error, height]); // Re-run when container becomes available
 
   // Update chart height when height prop changes
   useEffect(() => {
@@ -224,7 +242,7 @@ export default function PriceChart({
     }
   }, [priceData, chartReady, timeRange]);
 
-  if (!poolAddress) {
+  if (!displayPoolAddress) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-50 rounded-xl border border-gray-200">
         <p className="text-sm text-gray-500">No pool found</p>
@@ -252,7 +270,15 @@ export default function PriceChart({
     <div className="w-full relative">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-medium text-gray-700">
-          {fromToken} / {toToken}
+          {isMultiHop ? (
+            <>
+              {chartFromToken} / {chartToToken} {swapPath && swapPath.length > 2 && (
+                <span className="text-xs text-orange-600 ml-1">(via {swapPath.slice(1, -1).join(' → ')})</span>
+              )}
+            </>
+          ) : (
+            `${fromToken} / ${toToken}`
+          )}
         </h3>
         <div className="flex gap-1">
           {(['1H', '1D', '1W', '1M'] as const).map((range) => (

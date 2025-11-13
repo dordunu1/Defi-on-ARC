@@ -1,17 +1,19 @@
 import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { RainbowKitProvider, ConnectButton } from '@rainbow-me/rainbowkit';
 import { WagmiProvider, useAccount } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from './config/wagmi';
 import BridgeModal from './components/BridgeModal';
 import LandingPage from './components/LandingPage';
-import Navigation, { TabType } from './components/Navigation';
+import Navigation from './components/Navigation';
 import Swap from './components/Swap';
 import Pools from './components/Pools';
 import CreatePool from './components/CreatePool';
 import MaintenancePage from './components/MaintenancePage';
 import XFollowFAB from './components/XFollowFAB';
-import { ArrowLeftRight, Home } from 'lucide-react';
+import ChangelogDocsWrapper from './components/ChangelogDocsWrapper';
+import { Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
 
 const queryClient = new QueryClient();
@@ -28,13 +30,16 @@ function AppContent() {
 
   const { address, isConnected } = useAccount();
   const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('bridge');
-  const [showLandingPage, setShowLandingPage] = useState(true);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Check if we're on the landing page route
+  const isLandingPage = location.pathname === '/';
 
   return (
     <>
-      {showLandingPage ? (
-        <LandingPage onGetStarted={() => setShowLandingPage(false)} />
+      {isLandingPage ? (
+        <LandingPage onGetStarted={() => navigate('/bridge')} />
       ) : (
         <div className="min-h-screen bg-orange-50 flex items-start justify-center p-3 sm:p-4 md:p-8">
           <div className="w-full max-w-5xl mt-4 sm:mt-6 md:mt-8">
@@ -42,7 +47,7 @@ function AppContent() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4">
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => setShowLandingPage(true)}
+                  onClick={() => navigate('/')}
                   className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition-all shadow-sm"
                   title="Back to Home"
                 >
@@ -71,18 +76,16 @@ function AppContent() {
             </div>
 
             {/* Navigation Tabs */}
-            <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+            <Navigation />
 
             {/* Content Area */}
-            <div className="mt-6">
-              {activeTab === 'bridge' && (
-                <BridgeModal asPage={true} />
-              )}
-
-              {activeTab === 'swap' && <Swap />}
-              {activeTab === 'pools' && <Pools />}
-              {activeTab === 'create-pool' && <CreatePool />}
-            </div>
+            <Routes>
+              <Route path="/bridge" element={<BridgeModal asPage={true} />} />
+              <Route path="/swap" element={<Swap />} />
+              <Route path="/pools" element={<Pools />} />
+              <Route path="/create-pool" element={<CreatePool />} />
+              <Route path="*" element={<Navigate to="/bridge" replace />} />
+            </Routes>
           </div>
 
           <BridgeModal
@@ -92,6 +95,9 @@ function AppContent() {
 
           {/* X Follow FAB */}
           <XFollowFAB />
+          
+          {/* Changelog and Docs */}
+          <ChangelogDocsWrapper />
         </div>
       )}
     </>
@@ -103,7 +109,9 @@ function App() {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
-          <AppContent />
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
