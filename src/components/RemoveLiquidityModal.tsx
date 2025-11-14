@@ -249,7 +249,7 @@ export default function RemoveLiquidityModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         onClick={() => {
           if (!isPending && !isConfirming) {
             onClose();
@@ -257,35 +257,58 @@ export default function RemoveLiquidityModal({
         }}
       >
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
+          initial={{ scale: 0.8, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.8, opacity: 0, y: 20 }}
+          transition={{ type: 'spring', damping: 20, stiffness: 300 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto scrollbar-hide relative"
+          className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden max-h-[90vh] overflow-y-auto scrollbar-hide"
           style={{
             boxShadow: `
-              0 0 30px rgba(251, 146, 60, 0.25),
-              0 0 60px rgba(251, 146, 60, 0.15),
-              0 10px 25px -5px rgba(0, 0, 0, 0.1),
-              0 4px 6px -2px rgba(0, 0, 0, 0.05),
-              inset 0 1px 0 rgba(255, 255, 255, 0.9)
-            `
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+              0 0 30px rgba(251, 146, 60, 0.15),
+              0 0 60px rgba(251, 146, 60, 0.1),
+              0 10px 30px rgba(0, 0, 0, 0.1),
+              0 4px 8px rgba(0, 0, 0, 0.05)
+            `,
           }}
         >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-900">Remove Liquidity</h3>
-            {!isPending && !isConfirming && (
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-          </div>
+          {/* Close Button */}
+          {!isPending && !isConfirming && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Header */}
+          <motion.h3
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-xl sm:text-2xl font-bold text-gray-900 mb-6"
+          >
+            Remove Liquidity
+          </motion.h3>
 
           {/* Pool Info */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-6 p-4 bg-white/60 backdrop-blur-lg rounded-2xl border border-white/40"
+            style={{
+              boxShadow: `
+                inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                0 4px 8px rgba(0, 0, 0, 0.05)
+              `,
+            }}
+          >
             <div className="flex items-center gap-3">
               <div className="flex -space-x-2">
                 <TokenLogo token={tokenASymbol} size={40} />
@@ -295,17 +318,30 @@ export default function RemoveLiquidityModal({
                 {tokenASymbol} / {tokenBSymbol}
               </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* LP Amount Input */}
-          <div className="mb-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mb-4"
+          >
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700 flex-shrink-0">LP Tokens</label>
               <span className="text-xs text-gray-500 whitespace-nowrap">
                 Balance: {parseFloat(lpBalanceStr).toFixed(4)}
               </span>
             </div>
-            <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+            <div className="bg-white/60 backdrop-blur-lg rounded-xl p-4 border border-white/40"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                  0 4px 8px rgba(0, 0, 0, 0.05)
+                `,
+              }}
+            >
               <input
                 type="number"
                 value={lpAmount}
@@ -331,11 +367,23 @@ export default function RemoveLiquidityModal({
                 Max
               </button>
             </div>
-          </div>
+          </motion.div>
 
           {/* You'll Receive */}
           {lpAmount && parseFloat(lpAmount) > 0 && (
-            <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="mb-4 p-4 bg-white/60 backdrop-blur-lg rounded-xl border border-white/40"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                  0 4px 8px rgba(0, 0, 0, 0.05)
+                `,
+              }}
+            >
               <div className="flex items-center gap-2 mb-3">
                 <Info className="w-4 h-4 text-orange-600" />
                 <span className="text-sm font-medium text-gray-700">You'll Receive</span>
@@ -356,29 +404,42 @@ export default function RemoveLiquidityModal({
                   <span className="font-bold text-gray-900">{parseFloat(amountBReceive).toFixed(6)}</span>
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-200">
+              <div className="mt-3 pt-3 border-t border-white/40">
                 <p className="text-xs text-gray-500">
                   <strong>Note:</strong> These amounts are calculated based on your LP token share of the pool's reserves. 
                   If no trades have occurred since you added liquidity, you'll receive back approximately what you deposited (minus any fees).
                   Amounts may vary slightly due to rounding or pool fees.
                 </p>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Error Message (only show if not in progress modal) */}
           {(errorMessage || error) && !showProgressModal && (
-            <div className="mb-4 p-3 bg-red-50 rounded-xl border border-red-200 flex items-start gap-2">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-3 bg-red-50/80 backdrop-blur-sm rounded-xl border border-red-200 flex items-start gap-2"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                `,
+              }}
+            >
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
               <div className="text-sm text-red-800">
                 <p className="font-medium">Error</p>
                 <p className="text-xs mt-1">{errorMessage || error?.message || 'Unknown error'}</p>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Remove Button */}
           <motion.button
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
             onClick={handleRemoveLiquidity}
             disabled={
               !isConnected ||
@@ -396,8 +457,21 @@ export default function RemoveLiquidityModal({
               isPending ||
               isConfirming
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-orange-500 text-white hover:bg-orange-600'
+                : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700'
             }`}
+            style={!isConnected ||
+              !isArcTestnet ||
+              !lpAmount ||
+              parseFloat(lpAmount) <= 0 ||
+              isPending ||
+              isConfirming ? {} : {
+              boxShadow: `
+                inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                0 4px 12px rgba(251, 146, 60, 0.4),
+                0 2px 4px rgba(0, 0, 0, 0.1)
+              `,
+            }}
             whileHover={
               !isConnected ||
               !isArcTestnet ||
@@ -439,7 +513,7 @@ export default function RemoveLiquidityModal({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
               onClick={(e) => {
                 e.stopPropagation();
                 // Don't close modal if transaction is in progress
@@ -449,79 +523,147 @@ export default function RemoveLiquidityModal({
               }}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
+                initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.8, opacity: 0, y: 20 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+                className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden"
                 style={{
                   boxShadow: `
-                    0 0 30px rgba(251, 146, 60, 0.25),
-                    0 0 60px rgba(251, 146, 60, 0.15),
-                    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-                    0 4px 6px -2px rgba(0, 0, 0, 0.05),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.9)
-                  `
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                    inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+                    0 0 30px rgba(251, 146, 60, 0.15),
+                    0 0 60px rgba(251, 146, 60, 0.1),
+                    0 10px 30px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
                 }}
               >
-                <div className="flex items-center justify-end mb-4">
-                  {!isPending && !isConfirming && !removalSuccess && (
-                    <button
-                      onClick={() => {
-                        setShowProgressModal(false);
-                        setErrorMessage(null);
-                      }}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
+                {/* Close Button */}
+                {!isPending && !isConfirming && !removalSuccess && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowProgressModal(false);
+                      setErrorMessage(null);
+                      setRemovalSuccess(false);
+                      setLpAmount('');
+                      // Close the main modal as well
+                      setTimeout(() => {
+                        onClose();
+                      }, 100);
+                    }}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+
+                {/* Header */}
+                <motion.h3
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="text-xl sm:text-2xl font-bold text-gray-900 mb-6"
+                >
+                  Removing Liquidity
+                </motion.h3>
 
                 <div className="space-y-4">
                   {/* Removing Liquidity Step */}
-                  <div className="flex items-center gap-3">
-                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                      isPending || isConfirming
-                        ? 'bg-orange-500 text-white'
-                        : (removalSuccess || (isSuccess && !isPending && !isConfirming))
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 text-gray-500'
-                    }`}>
-                      {(isPending || isConfirming) ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (removalSuccess || (isSuccess && !isPending && !isConfirming)) ? (
-                        <CheckCircle2 className="w-5 h-5" />
-                      ) : (
-                        <div className="w-5 h-5 rounded-full bg-white" />
-                      )}
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                    style={{
+                      boxShadow: `
+                        inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                        inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                        0 4px 8px rgba(0, 0, 0, 0.05)
+                      `,
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="relative flex-shrink-0">
+                        {(isPending || isConfirming) ? (
+                          <motion.div
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 4px 12px rgba(251, 146, 60, 0.4)
+                              `,
+                            }}
+                          >
+                            <Loader2 className="w-6 h-6 text-white animate-spin" />
+                          </motion.div>
+                        ) : (removalSuccess || (isSuccess && !isPending && !isConfirming)) ? (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 200 }}
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 0 20px rgba(16, 185, 129, 0.4),
+                                0 4px 12px rgba(16, 185, 129, 0.3)
+                              `,
+                            }}
+                          >
+                            <CheckCircle2 className="w-6 h-6 text-white" />
+                          </motion.div>
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                              `,
+                            }}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-white" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm ${
+                          isPending || isConfirming
+                            ? 'text-orange-600'
+                            : (removalSuccess || (isSuccess && !isPending && !isConfirming))
+                            ? 'text-green-600'
+                            : 'text-gray-500'
+                        }`}>
+                          Removing Liquidity
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {isPending || isConfirming
+                            ? 'Confirm in wallet...'
+                            : (removalSuccess || (isSuccess && !isPending && !isConfirming))
+                            ? 'Success'
+                            : 'Pending'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${
-                        isPending || isConfirming
-                          ? 'text-orange-600'
-                          : (removalSuccess || (isSuccess && !isPending && !isConfirming))
-                          ? 'text-green-600'
-                          : 'text-gray-500'
-                      }`}>
-                        Removing Liquidity
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {isPending || isConfirming
-                          ? 'Confirm transaction in wallet...'
-                          : (removalSuccess || (isSuccess && !isPending && !isConfirming))
-                          ? 'Successfully removed!'
-                          : 'Pending'}
-                      </p>
-                    </div>
-                  </div>
+                  </motion.div>
 
                   {/* Success Message */}
                   {(removalSuccess || (isSuccess && !isPending && !isConfirming)) && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200"
+                      className="mt-4 p-4 bg-green-50/80 backdrop-blur-sm rounded-xl border border-green-200"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                        `,
+                      }}
                     >
                       <div className="flex items-start gap-2">
                         <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
@@ -540,14 +682,27 @@ export default function RemoveLiquidityModal({
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-4 bg-red-50 rounded-xl border border-red-200 relative"
+                      className="mt-4 p-4 bg-red-50/80 backdrop-blur-sm rounded-xl border border-red-200 relative"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                        `,
+                      }}
                     >
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setErrorMessage(null);
                           setShowProgressModal(false);
+                          setRemovalSuccess(false);
+                          setLpAmount('');
+                          // Close the main modal as well
+                          setTimeout(() => {
+                            onClose();
+                          }, 100);
                         }}
-                        className="absolute top-2 right-2 text-red-400 hover:text-red-600 transition-colors"
+                        className="absolute top-2 right-2 text-red-400 hover:text-red-600 transition-colors z-10"
                       >
                         <X className="w-4 h-4" />
                       </button>

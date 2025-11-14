@@ -456,6 +456,8 @@ export default function CreatePool() {
   const [completedApprovalStep, setCompletedApprovalStep] = useState<'none' | 'approvingA' | 'approvingB'>('none');
   const [hasStartedPostCreationFlow, setHasStartedPostCreationFlow] = useState(false);
   const [modalManuallyClosed, setModalManuallyClosed] = useState(false);
+  // Stable step completion tracking to prevent flickering
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
   const handleContinueToAmounts = () => {
     // Check authorization before proceeding
@@ -653,6 +655,7 @@ export default function CreatePool() {
       }
     } else if (transactionSuccess && approvalStep === 'adding') {
       // Only close modal when liquidity addition is fully complete
+      setCompletedSteps(prev => new Set(prev).add('adding')); // Mark adding liquidity as completed
       setLiquiditySuccess(true);
       // Don't auto-close, let user close manually or after delay
       setTimeout(() => {
@@ -693,6 +696,7 @@ export default function CreatePool() {
         try {
           // Mark this approval as completed
           setCompletedApprovalStep(approvalStep);
+          setCompletedSteps(prev => new Set(prev).add(approvalStep)); // Mark step as completed to prevent flickering
           
           // Ensure modal stays open
           if (!showProgressModal) {
@@ -1579,7 +1583,7 @@ export default function CreatePool() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
               onClick={(e) => {
                 e.stopPropagation();
                 // Don't close modal if transaction is in progress
@@ -1594,211 +1598,391 @@ export default function CreatePool() {
                   setErrorMessage(null);
                   setHasStartedPostCreationFlow(false);
                   setCompletedApprovalStep('none');
+                  setCompletedSteps(new Set()); // Reset completed steps
                   setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
                 }
               }}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
+                initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.8, opacity: 0, y: 20 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative min-h-[200px]"
+                className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden min-h-[200px]"
                 style={{
                   boxShadow: `
-                    0 0 30px rgba(251, 146, 60, 0.25),
-                    0 0 60px rgba(251, 146, 60, 0.15),
-                    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-                    0 4px 6px -2px rgba(0, 0, 0, 0.05),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.9)
-                  `
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                    inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+                    0 0 30px rgba(251, 146, 60, 0.15),
+                    0 0 60px rgba(251, 146, 60, 0.1),
+                    0 10px 30px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
                 }}
               >
-                <div className="flex items-center justify-end mb-6">
-                  {/* Show close button when:
-                      1. Liquidity was successfully added (liquiditySuccess is true)
-                      2. OR transaction succeeded and we're at adding step (all done)
-                      3. OR no transactions are in progress and not waiting for approvals
-                  */}
-                  {(liquiditySuccess || 
-                    (transactionSuccess && approvalStep === 'adding' && !isAddingLiquidity && !isConfirmingLiquidity) ||
-                    (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && !poolCreated && approvalStep === 'none')) && (
-                    <button
-                      onClick={() => {
-                        setShowProgressModal(false);
-                        setApprovalStep('none');
-                        setLiquiditySuccess(false);
-                        setErrorMessage(null);
-                        setHasStartedPostCreationFlow(false);
-                        setCompletedApprovalStep('none');
-                        setAmountA('');
-                        setAmountB('');
-                        setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
-                      }}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
-                      aria-label="Close"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
+                {/* Close Button */}
+                {(liquiditySuccess || 
+                  (transactionSuccess && approvalStep === 'adding' && !isAddingLiquidity && !isConfirmingLiquidity) ||
+                  (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && !poolCreated && approvalStep === 'none')) && (
+                  <button
+                    onClick={() => {
+                      setShowProgressModal(false);
+                      setApprovalStep('none');
+                      setLiquiditySuccess(false);
+                      setErrorMessage(null);
+                      setHasStartedPostCreationFlow(false);
+                      setCompletedApprovalStep('none');
+                      setCompletedSteps(new Set());
+                      setAmountA('');
+                      setAmountB('');
+                      setModalManuallyClosed(true);
+                    }}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
 
-                <div className="space-y-3">
-                  {/* Show steps only if there's content to display */}
+                {/* Header */}
+                <motion.h3
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="text-xl sm:text-2xl font-bold text-gray-900 text-center mb-6"
+                >
+                  {!poolExists ? 'Creating Pool' : 'Adding Liquidity'}
+                </motion.h3>
+
+                <div className="space-y-4">
+
                   {/* Step 1: Create Pool (if creating new pool) */}
                   {(!poolExists && (isCreating || isConfirmingCreate || poolCreated || approvalStep !== 'none')) && (
-                    <div className="flex items-center gap-3">
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                        isCreating || isConfirmingCreate
-                          ? 'bg-orange-500 text-white'
-                          : poolCreated
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        {(isCreating || isConfirmingCreate) ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : poolCreated ? (
-                          <CheckCircle2 className="w-5 h-5" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-white" />
-                        )}
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                          0 4px 8px rgba(0, 0, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex-shrink-0">
+                          {(isCreating || isConfirmingCreate) ? (
+                            <motion.div
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 4px 12px rgba(251, 146, 60, 0.4)
+                                `,
+                              }}
+                            >
+                              <Loader2 className="w-6 h-6 text-white animate-spin" />
+                            </motion.div>
+                          ) : completedSteps.has('createPool') || poolCreated ? (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 200 }}
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 0 20px rgba(16, 185, 129, 0.4),
+                                  0 4px 12px rgba(16, 185, 129, 0.3)
+                                `,
+                              }}
+                            >
+                              <CheckCircle2 className="w-6 h-6 text-white" />
+                            </motion.div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                `,
+                              }}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                            isCreating || isConfirmingCreate
+                              ? 'text-orange-600'
+                              : completedSteps.has('createPool') || poolCreated
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Create Pool
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {(isCreating || isConfirmingCreate) 
+                              ? 'Confirm in wallet...' 
+                              : completedSteps.has('createPool') || poolCreated
+                              ? 'Completed'
+                              : 'Pending'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${
-                          isCreating || isConfirmingCreate
-                            ? 'text-orange-600'
-                            : poolCreated
-                            ? 'text-green-600'
-                            : 'text-gray-500'
-                        }`}>
-                          Create Pool
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {(isCreating || isConfirmingCreate) 
-                            ? 'Confirm in wallet...' 
-                            : poolCreated
-                            ? 'Completed'
-                            : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* Step 2: Approve Token A */}
                   {(approvalStep === 'approvingA' || approvalStep === 'approvingB' || approvalStep === 'adding') && (
-                    <div className="flex items-center gap-3">
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                        approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity)
-                          ? 'bg-orange-500 text-white'
-                          : approvalStep !== 'approvingA'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : approvalStep !== 'approvingA' ? (
-                          <CheckCircle2 className="w-5 h-5" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-white" />
-                        )}
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                      className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                          0 4px 8px rgba(0, 0, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex-shrink-0">
+                          {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) ? (
+                            <motion.div
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 4px 12px rgba(251, 146, 60, 0.4)
+                                `,
+                              }}
+                            >
+                              <Loader2 className="w-6 h-6 text-white animate-spin" />
+                            </motion.div>
+                          ) : completedSteps.has('approvingA') || approvalStep !== 'approvingA' ? (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 200 }}
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 0 20px rgba(16, 185, 129, 0.4),
+                                  0 4px 12px rgba(16, 185, 129, 0.3)
+                                `,
+                              }}
+                            >
+                              <CheckCircle2 className="w-6 h-6 text-white" />
+                            </motion.div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                `,
+                              }}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                            approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity)
+                              ? 'text-orange-600'
+                              : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Approve {symbolA || 'Token A'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) 
+                              ? 'Confirm in wallet...' 
+                              : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                              ? 'Completed'
+                              : 'Pending'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${
-                          approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity)
-                            ? 'text-orange-600'
-                            : approvalStep !== 'approvingA'
-                            ? 'text-green-600'
-                            : 'text-gray-500'
-                        }`}>
-                          Approve {symbolA || 'Token A'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) 
-                            ? 'Confirm in wallet...' 
-                            : approvalStep !== 'approvingA'
-                            ? 'Completed'
-                            : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* Step 3: Approve Token B */}
                   {(approvalStep === 'approvingB' || approvalStep === 'adding') && (
-                    <div className="flex items-center gap-3">
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                        approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate)
-                          ? 'bg-orange-500 text-white'
-                          : approvalStep === 'adding'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : approvalStep === 'adding' ? (
-                          <CheckCircle2 className="w-5 h-5" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-white" />
-                        )}
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 }}
+                      className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                          0 4px 8px rgba(0, 0, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex-shrink-0">
+                          {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) ? (
+                            <motion.div
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 4px 12px rgba(251, 146, 60, 0.4)
+                                `,
+                              }}
+                            >
+                              <Loader2 className="w-6 h-6 text-white animate-spin" />
+                            </motion.div>
+                          ) : completedSteps.has('approvingB') || approvalStep === 'adding' ? (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 200 }}
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 0 20px rgba(16, 185, 129, 0.4),
+                                  0 4px 12px rgba(16, 185, 129, 0.3)
+                                `,
+                              }}
+                            >
+                              <CheckCircle2 className="w-6 h-6 text-white" />
+                            </motion.div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                `,
+                              }}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                            approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate)
+                              ? 'text-orange-600'
+                              : completedSteps.has('approvingB') || approvalStep === 'adding'
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Approve {symbolB || 'Token B'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) 
+                              ? 'Confirm in wallet...' 
+                              : completedSteps.has('approvingB') || approvalStep === 'adding'
+                              ? 'Completed'
+                              : 'Pending'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${
-                          approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate)
-                            ? 'text-orange-600'
-                            : approvalStep === 'adding'
-                            ? 'text-green-600'
-                            : 'text-gray-500'
-                        }`}>
-                          Approve {symbolB || 'Token B'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) 
-                            ? 'Confirm in wallet...' 
-                            : approvalStep === 'adding'
-                            ? 'Completed'
-                            : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* Step 4: Add Liquidity */}
                   {(approvalStep === 'adding' || (approvalStep !== 'none' && (isAddingLiquidity || isConfirmingLiquidity || transactionSuccess))) && (
-                    <div className="flex items-center gap-3">
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                        approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity)
-                          ? 'bg-orange-500 text-white'
-                          : transactionSuccess && approvalStep === 'adding'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : transactionSuccess && approvalStep === 'adding' ? (
-                          <CheckCircle2 className="w-5 h-5" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full bg-white" />
-                        )}
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.5 }}
+                      className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                          0 4px 8px rgba(0, 0, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex-shrink-0">
+                          {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) ? (
+                            <motion.div
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 4px 12px rgba(251, 146, 60, 0.4)
+                                `,
+                              }}
+                            >
+                              <Loader2 className="w-6 h-6 text-white animate-spin" />
+                            </motion.div>
+                          ) : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding') ? (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 200 }}
+                              className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                  0 0 20px rgba(16, 185, 129, 0.4),
+                                  0 4px 12px rgba(16, 185, 129, 0.3)
+                                `,
+                              }}
+                            >
+                              <CheckCircle2 className="w-6 h-6 text-white" />
+                            </motion.div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                              style={{
+                                boxShadow: `
+                                  inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                  inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                `,
+                              }}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-white" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                            approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity)
+                              ? 'text-orange-600'
+                              : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding')
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Add Liquidity
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) 
+                              ? 'Confirm in wallet...' 
+                              : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding')
+                              ? 'Success'
+                              : 'Pending'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${
-                          approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity)
-                            ? 'text-orange-600'
-                            : transactionSuccess && approvalStep === 'adding'
-                            ? 'text-green-600'
-                            : 'text-gray-500'
-                        }`}>
-                          Add Liquidity
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) 
-                            ? 'Confirm in wallet...' 
-                            : transactionSuccess && approvalStep === 'adding'
-                            ? 'Success'
-                            : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* Success Message */}
@@ -1806,7 +1990,13 @@ export default function CreatePool() {
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200"
+                      className="mt-4 p-4 bg-green-50/80 backdrop-blur-sm rounded-xl border border-green-200"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                        `,
+                      }}
                     >
                       <div className="flex items-center gap-2 justify-center">
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -1822,7 +2012,13 @@ export default function CreatePool() {
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-4 bg-red-50 rounded-xl border border-red-200"
+                      className="mt-4 p-4 bg-red-50/80 backdrop-blur-sm rounded-xl border border-red-200"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                        `,
+                      }}
                     >
                       <div className="flex items-center gap-2 justify-center">
                         <AlertCircle className="w-5 h-5 text-red-600" />

@@ -57,20 +57,67 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
       setIsLoading(true);
       try {
         const poolAddrLower = poolAddress.toLowerCase();
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc&limit=1000`,
-          {
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${supabaseKey}`,
-            },
-          }
-        );
+        let allEvents: SwapEvent[] = [];
+        let hasMore = true;
+        let rangeStart = 0;
+        const batchSize = 1000; // Fetch in batches of 1000
 
-        if (response.ok) {
-          const events = await response.json();
-          setSwapEvents(events);
+        // Fetch all events using pagination with Range header
+        while (hasMore) {
+          const rangeEnd = rangeStart + batchSize - 1;
+          const response = await fetch(
+            `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc`,
+            {
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Range': `${rangeStart}-${rangeEnd}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const events = await response.json();
+            const contentRange = response.headers.get('content-range');
+            
+            if (events.length === 0) {
+              hasMore = false;
+            } else {
+              allEvents = [...allEvents, ...events];
+              
+              // Check if we've fetched all events using Content-Range header
+              if (contentRange) {
+                const match = contentRange.match(/\d+-\d+\/(\d+)/);
+                if (match) {
+                  const total = parseInt(match[1]);
+                  if (allEvents.length >= total) {
+                    hasMore = false;
+                  } else {
+                    rangeStart += batchSize;
+                  }
+                } else {
+                  // Fallback: if we got fewer events than batchSize, we've reached the end
+                  if (events.length < batchSize) {
+                    hasMore = false;
+                  } else {
+                    rangeStart += batchSize;
+                  }
+                }
+              } else {
+                // Fallback: if we got fewer events than batchSize, we've reached the end
+                if (events.length < batchSize) {
+                  hasMore = false;
+                } else {
+                  rangeStart += batchSize;
+                }
+              }
+            }
+          } else {
+            hasMore = false;
+          }
         }
+
+        setSwapEvents(allEvents);
       } catch (error) {
         console.error('Error fetching swap events:', error);
       } finally {

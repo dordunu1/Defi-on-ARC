@@ -36,7 +36,7 @@ export default function Swap() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [isCalculatingOutput, setIsCalculatingOutput] = useState(false);
   const [showLiquidityInfo, setShowLiquidityInfo] = useState(false);
-  
+
   // Custom tokens state
   const [customTokens, setCustomTokens] = useState<Map<Address, CustomToken>>(new Map());
   const [addressInput, setAddressInput] = useState('');
@@ -224,6 +224,8 @@ export default function Swap() {
   const [successShownForHash, setSuccessShownForHash] = useState<`0x${string}` | null>(null);
   const [swapTransactionStarted, setSwapTransactionStarted] = useState(false);
   const [hasBeenPendingForCurrentHash, setHasBeenPendingForCurrentHash] = useState(false);
+  // Stable step completion tracking to prevent flickering
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   
   // Check if on Arc Testnet
   const isArcTestnet = chainId === 5042002;
@@ -459,6 +461,7 @@ export default function Swap() {
         try {
           // Mark approval as completed to prevent re-triggering
           setApprovalCompleted(true);
+          setCompletedSteps(prev => new Set(prev).add('approval'));
           
           // Wait a moment for state to update
           await new Promise(resolve => setTimeout(resolve, 1500));
@@ -981,9 +984,9 @@ export default function Swap() {
                         {/* Predefined Tokens */}
                         <div className="p-2">
                           <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
-                          {AVAILABLE_TOKENS.map((token) => (
+                    {AVAILABLE_TOKENS.map((token) => (
                             <TokenItem
-                              key={token}
+                        key={token}
                               token={token}
                               isSelected={fromToken === token}
                               onSelect={() => selectToken(token)}
@@ -1119,9 +1122,9 @@ export default function Swap() {
                         {/* Predefined Tokens */}
                         <div className="p-2">
                           <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
-                          {AVAILABLE_TOKENS.map((token) => (
+                      {AVAILABLE_TOKENS.map((token) => (
                             <TokenItem
-                              key={token}
+                          key={token}
                               token={token}
                               isSelected={toToken === token}
                               onSelect={() => selectToken(token)}
@@ -1372,13 +1375,13 @@ export default function Swap() {
                 }}
               >
                 {/* Close Button */}
-                <button
-                  onClick={() => setShowReviewModal(false)}
+                  <button
+                    onClick={() => setShowReviewModal(false)}
                   className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
                   aria-label="Close"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
 
                 {/* Header */}
                 <motion.h3
@@ -1420,8 +1423,8 @@ export default function Swap() {
                           })}{' '}
                           {getTokenDisplay(fromToken).symbol}
                         </span>
-                      </div>
                     </div>
+                  </div>
                   </motion.div>
 
                   {/* Swap Route - Enhanced Visual Flow */}
@@ -1555,8 +1558,8 @@ export default function Swap() {
                                   >
                                     {index + 1}
                                   </motion.div>
-                                </div>
-                                
+                  </div>
+
                                 {/* Token label */}
                                 <motion.span
                                   initial={{ opacity: 0, y: -5 }}
@@ -1596,7 +1599,7 @@ export default function Swap() {
                                       }}
                                       style={{ width: '50%' }}
                                     />
-                                  </div>
+                    </div>
                                   
                                   {/* Arrow head */}
                                   <motion.div
@@ -1639,7 +1642,7 @@ export default function Swap() {
                             <span className="font-bold">{swapPath.slice(1, -1).join(' → ')}</span>
                           </p>
                         </motion.div>
-                      </div>
+                  </div>
                     </motion.div>
                   ) : (
                     /* Arrow for direct swap */
@@ -1788,7 +1791,7 @@ export default function Swap() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
               onClick={() => {
                 // Don't close on background click during transaction
                 // Only allow closing if we're not in an active step or if transaction is complete
@@ -1798,27 +1801,24 @@ export default function Swap() {
               }}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
+                initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.8, opacity: 0, y: 20 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+                className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden"
                 style={{
                   boxShadow: `
-                    0 0 30px rgba(251, 146, 60, 0.25),
-                    0 0 60px rgba(251, 146, 60, 0.15),
-                    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-                    0 4px 6px -2px rgba(0, 0, 0, 0.05),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.9)
-                  `
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                    inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+                    0 0 30px rgba(251, 146, 60, 0.15),
+                    0 0 60px rgba(251, 146, 60, 0.1),
+                    0 10px 30px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
                 }}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900">Swap Progress</h3>
-                  {/* Show close button when transaction is complete OR when not actively processing */}
-                  {(swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming) || 
-                   (swapStep === 'approving' && !isPending && !isConfirming && approvalCompleted) ||
-                   (!isPending && !isConfirming && swapStep === 'none') ? (
+                {/* Close Button */}
                     <button
                       onClick={() => {
                         setShowProgressModal(false);
@@ -1831,82 +1831,181 @@ export default function Swap() {
                           setSwapHash(null);
                           setSwapConfirmed(false);
                           setSwapStartTime(null);
+                      setSuccessShownForHash(null);
+                      setSwapTransactionStarted(false);
+                      setHasBeenPendingForCurrentHash(false);
+                      setCompletedSteps(new Set());
                         }
                       }}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
                       aria-label="Close"
                     >
                       <X className="w-5 h-5" />
                     </button>
-                  ) : null}
-                </div>
+
+                {/* Header */}
+                <motion.h3
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="text-xl sm:text-2xl font-bold text-gray-900 text-center mb-6"
+                >
+                  Swap Progress
+                </motion.h3>
 
                 <div className="space-y-6">
                   {/* Approving Step */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                    style={{
+                      boxShadow: `
+                        inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                        inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                        0 4px 8px rgba(0, 0, 0, 0.05)
+                      `,
+                    }}
+                  >
                   <div className="flex items-center gap-4">
-                    <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
-                      swapStep === 'approving' && (isPending || isConfirming)
-                        ? 'bg-orange-500'
-                        : swapStep === 'swapping' && approvalCompleted
-                        ? 'bg-green-500'
-                        : 'bg-gray-200'
-                    }`}>
+                      {/* Step Icon */}
+                      <div className="relative flex-shrink-0">
                       {swapStep === 'approving' && (isPending || isConfirming) ? (
+                          <motion.div
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 4px 12px rgba(251, 146, 60, 0.4)
+                              `,
+                            }}
+                          >
                         <Loader2 className="w-6 h-6 text-white animate-spin" />
-                      ) : swapStep === 'swapping' && approvalCompleted ? (
+                          </motion.div>
+                        ) : completedSteps.has('approval') || (swapStep === 'swapping' && approvalCompleted) ? (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 200 }}
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 0 20px rgba(16, 185, 129, 0.4),
+                                0 4px 12px rgba(16, 185, 129, 0.3)
+                              `,
+                            }}
+                          >
                         <CheckCircle2 className="w-6 h-6 text-white" />
+                          </motion.div>
                       ) : (
+                          <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                              `,
+                            }}
+                          >
                         <div className="w-6 h-6 rounded-full bg-white" />
+                          </div>
                       )}
                     </div>
-                    <div className="flex-1">
-                      <p className={`font-semibold ${
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm ${
                         swapStep === 'approving' && (isPending || isConfirming)
                           ? 'text-orange-600'
-                          : swapStep === 'swapping' && approvalCompleted
+                            : completedSteps.has('approval') || (swapStep === 'swapping' && approvalCompleted)
                           ? 'text-green-600'
                           : 'text-gray-500'
                       }`}>
-                        Approving {fromToken}
+                          Approving {getTokenDisplay(fromToken).symbol}
                       </p>
-                      <p className="text-sm text-gray-500">
+                        <p className="text-xs text-gray-500 mt-1">
                         {swapStep === 'approving' && (isPending || isConfirming)
                           ? 'Waiting for confirmation...'
-                          : swapStep === 'swapping' && approvalCompleted
+                            : completedSteps.has('approval') || (swapStep === 'swapping' && approvalCompleted)
                           ? 'Approval completed'
                           : 'Allow the contract to spend your tokens'}
                       </p>
                     </div>
                   </div>
+                  </motion.div>
 
                   {/* Swapping Step */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                    style={{
+                      boxShadow: `
+                        inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                        inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                        0 4px 8px rgba(0, 0, 0, 0.05)
+                      `,
+                    }}
+                  >
                   <div className="flex items-center gap-4">
-                    <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
-                      swapStep === 'swapping' && (isPending || isConfirming)
-                        ? 'bg-orange-500'
-                        : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming
-                        ? 'bg-green-500'
-                        : 'bg-gray-200'
-                    }`}>
+                      {/* Step Icon */}
+                      <div className="relative flex-shrink-0">
                       {swapStep === 'swapping' && (isPending || isConfirming) ? (
+                          <motion.div
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 4px 12px rgba(251, 146, 60, 0.4)
+                              `,
+                            }}
+                          >
                         <Loader2 className="w-6 h-6 text-white animate-spin" />
+                          </motion.div>
                       ) : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming ? (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 200 }}
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 0 20px rgba(16, 185, 129, 0.4),
+                                0 4px 12px rgba(16, 185, 129, 0.3)
+                              `,
+                            }}
+                          >
                         <CheckCircle2 className="w-6 h-6 text-white" />
+                          </motion.div>
                       ) : (
+                          <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                              `,
+                            }}
+                          >
                         <div className="w-6 h-6 rounded-full bg-white" />
+                          </div>
                       )}
                     </div>
-                    <div className="flex-1">
-                      <p className={`font-semibold ${
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm ${
                         swapStep === 'swapping' && (isPending || isConfirming)
                           ? 'text-orange-600'
                           : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming
                           ? 'text-green-600'
                           : 'text-gray-500'
                       }`}>
-                        Swapping {fromToken} for {toToken}
+                          Swapping {getTokenDisplay(fromToken).symbol} for {getTokenDisplay(toToken).symbol}
                       </p>
-                      <p className="text-sm text-gray-500">
+                        <p className="text-xs text-gray-500 mt-1">
                         {swapStep === 'swapping' && (isPending || isConfirming)
                           ? 'Waiting for confirmation...'
                           : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming
@@ -1915,16 +2014,20 @@ export default function Swap() {
                       </p>
                     </div>
                   </div>
-
-                  {/* Success Message - Only show when swap is actually confirmed */}
-                  {/* Success message removed - now using SwapSuccessModal component */}
+                  </motion.div>
 
                   {/* Error Message */}
                   {errorMessage && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-4 bg-red-50 rounded-xl border border-red-200"
+                      className="mt-4 p-4 bg-red-50/80 backdrop-blur-sm rounded-xl border border-red-200"
+                      style={{
+                        boxShadow: `
+                          inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                          inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                        `,
+                      }}
                     >
                       <p className="text-sm font-medium text-red-800">
                         Transaction Failed
@@ -1991,6 +2094,7 @@ export default function Swap() {
           setSuccessShownForHash(null); // CRITICAL: Reset success tracking so next swap can show success
           setSwapTransactionStarted(false); // CRITICAL: Reset transaction started flag
           setHasBeenPendingForCurrentHash(false); // CRITICAL: Reset pending state tracking
+          setCompletedSteps(new Set()); // Reset completed steps
         }}
         fromToken={fromTokenForPool}
         toToken={toTokenForPool}

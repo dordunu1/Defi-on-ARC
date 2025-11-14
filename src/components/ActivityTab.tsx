@@ -52,7 +52,7 @@ export default function ActivityTab() {
 
         if (response.ok) {
           const events = await response.json();
-          setSwapEvents(events);
+            setSwapEvents(events);
         }
       } catch (error) {
         console.error('Error fetching swap events:', error);

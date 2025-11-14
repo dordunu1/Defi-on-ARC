@@ -35,6 +35,12 @@ export default function AddLiquidityModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liquiditySuccess, setLiquiditySuccess] = useState(false);
   const [modalManuallyClosed, setModalManuallyClosed] = useState(false);
+  // Stable step completion tracking to prevent flickering
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
+  // Track the hash of the completed liquidity transaction to prevent duplicate success messages
+  const [completedLiquidityHash, setCompletedLiquidityHash] = useState<`0x${string}` | null>(null);
+  // Track the last transaction type to distinguish between approval and liquidity addition success
+  const [lastTransactionType, setLastTransactionType] = useState<'approval' | 'liquidity' | null>(null);
 
   // Get token symbols (convert addresses to symbols if needed)
   const tokenAInfo = useMemo(() => {
@@ -193,29 +199,44 @@ export default function AddLiquidityModal({
       if (!showProgressModal) {
         setShowProgressModal(true);
       }
-    } else if (isSuccess) {
-      // Only handle success for adding liquidity, not for approvals
-      if (approvalStep === 'adding') {
-        // Only process if we haven't already handled this success
+    } else if (isSuccess && hash) {
+      // CRITICAL: Only show success for adding liquidity, not for approvals
+      // Only show success if:
+      // 1. We're in the 'adding' step (not approving)
+      // 2. The last transaction was actually a liquidity addition (not an approval)
+      // 3. We're not pending or confirming (transaction is actually complete)
+      // 4. We haven't already shown success for this hash
+      if (approvalStep === 'adding' && 
+          lastTransactionType === 'liquidity' && 
+          !isPending && 
+          !isConfirming && 
+          completedLiquidityHash !== hash) {
+        // Mark this hash as completed to prevent duplicate success messages
+        setCompletedLiquidityHash(hash);
+        setCompletedSteps(prev => new Set(prev).add('adding')); // Mark adding liquidity as completed
         setLiquiditySuccess(true);
-        // Don't auto-close, let user close manually or after delay
+        // Auto-close after showing success
         setTimeout(() => {
           // Only auto-close if user hasn't manually closed
           if (showProgressModal && !modalManuallyClosed) {
             setShowProgressModal(false);
+            setModalManuallyClosed(true); // Mark as manually closed to prevent blank modal
             setApprovalStep('none');
             setLiquiditySuccess(false);
             setCompletedApprovalStep('none');
+            setCompletedLiquidityHash(null);
+            setLastTransactionType(null);
+            setCompletedSteps(new Set());
             // Reset and close after a delay
             setTimeout(() => {
               setAmountA('');
               setAmountB('');
               onClose();
-            }, 2000);
+            }, 100);
           }
         }, 2500);
       }
-      // For approvals (approvingA or approvingB), DON'T close modal - let auto-proceed handle it
+      // For approvals (approvingA or approvingB), DON'T show success - let auto-proceed handle it
       // The auto-proceed useEffect will take over and keep the modal open
     } else if (error && approvalStep === 'adding') {
       // Only show error modal for liquidity addition errors, not approval errors
@@ -241,7 +262,7 @@ export default function AddLiquidityModal({
         setShowProgressModal(true);
       }
     }
-  }, [isPending, isConfirming, isSuccess, error, approvalStep, showProgressModal, onClose, liquiditySuccess, modalManuallyClosed]);
+  }, [isPending, isConfirming, isSuccess, error, approvalStep, showProgressModal, onClose, liquiditySuccess, modalManuallyClosed, hash, completedLiquidityHash, lastTransactionType]);
 
   // Track which approval just completed to prevent duplicate triggers
   const [completedApprovalStep, setCompletedApprovalStep] = useState<'none' | 'approvingA' | 'approvingB'>('none');
@@ -250,11 +271,12 @@ export default function AddLiquidityModal({
   useEffect(() => {
     // Only proceed when approval transaction succeeds and we haven't already processed this approval
     // IMPORTANT: Check that we're still in approval mode (not already moved to adding)
-    if (isSuccess && !isPending && !isConfirming && poolAddress && (approvalStep === 'approvingA' || approvalStep === 'approvingB') && completedApprovalStep !== approvalStep && approvalStep !== 'adding') {
+    if (isSuccess && !isPending && !isConfirming && poolAddress && (approvalStep === 'approvingA' || approvalStep === 'approvingB') && completedApprovalStep !== approvalStep) {
       const proceed = async () => {
         try {
           // Mark this approval as completed to prevent duplicate processing
           setCompletedApprovalStep(approvalStep);
+          setCompletedSteps(prev => new Set(prev).add(approvalStep)); // Mark step as completed to prevent flickering
           
           // CRITICAL: Keep progress modal open during the entire flow
           if (!showProgressModal) {
@@ -296,12 +318,16 @@ export default function AddLiquidityModal({
               // Still need to approve Token B
               setApprovalStep('approvingB');
               setCompletedApprovalStep('none'); // Reset to allow next approval
+              setLastTransactionType('approval'); // Track that next transaction is approval
+              setLiquiditySuccess(false); // Ensure liquidity success is false
               setShowProgressModal(true); // Keep modal open
               approveToken(finalTokenB, poolAddress);
             } else {
               // Both approved, proceed to add liquidity - KEEP MODAL OPEN
               setApprovalStep('adding');
               setCompletedApprovalStep('none'); // Reset
+              setLastTransactionType('liquidity'); // Track that next transaction is liquidity addition
+              setLiquiditySuccess(false); // Reset liquidity success before starting
               setShowProgressModal(true); // Ensure modal stays open during add liquidity
               await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
             }
@@ -311,12 +337,16 @@ export default function AddLiquidityModal({
               // This shouldn't happen, but handle it
               setApprovalStep('approvingA');
               setCompletedApprovalStep('none'); // Reset to allow next approval
+              setLastTransactionType('approval'); // Track that next transaction is approval
+              setLiquiditySuccess(false); // Ensure liquidity success is false
               setShowProgressModal(true);
               approveToken(finalTokenA, poolAddress);
             } else {
               // Both approved, proceed to add liquidity - KEEP MODAL OPEN
               setApprovalStep('adding');
               setCompletedApprovalStep('none'); // Reset
+              setLastTransactionType('liquidity'); // Track that next transaction is liquidity addition
+              setLiquiditySuccess(false); // Reset liquidity success before starting
               setShowProgressModal(true); // Ensure modal stays open during add liquidity
               await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
             }
@@ -440,6 +470,9 @@ export default function AddLiquidityModal({
       // Check if Token A needs approval
       if (allowanceA < amountAWei) {
         setApprovalStep('approvingA');
+        setLastTransactionType('approval'); // Set BEFORE calling approveToken
+        setCompletedSteps(new Set()); // Reset completed steps
+        setLiquiditySuccess(false); // Ensure liquidity success is false
         approveToken(finalTokenA, poolAddress);
         return; // Wait for approval to complete
       }
@@ -447,12 +480,20 @@ export default function AddLiquidityModal({
       // Check if Token B needs approval
       if (allowanceB < amountBWei) {
         setApprovalStep('approvingB');
+        setLastTransactionType('approval'); // Set BEFORE calling approveToken
+        setLiquiditySuccess(false); // Ensure liquidity success is false
+        // Mark Token A as already approved if we're checking B
+        setCompletedSteps(new Set(['approvingA']));
         approveToken(finalTokenB, poolAddress);
         return; // Wait for approval to complete
       }
 
       // Both tokens approved, proceed with adding liquidity
+      // Mark both approvals as completed since tokens are already approved
+      setCompletedSteps(new Set(['approvingA', 'approvingB']));
       setApprovalStep('adding');
+      setLastTransactionType('liquidity'); // Set BEFORE calling addLiquidity
+      setLiquiditySuccess(false); // Reset liquidity success before starting
       await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
     } catch (err: any) {
       setErrorMessage(formatErrorMessage(err));
@@ -469,7 +510,7 @@ export default function AddLiquidityModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         onClick={() => {
           if (!isPending && !isConfirming) {
             onClose();
@@ -477,35 +518,58 @@ export default function AddLiquidityModal({
         }}
       >
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
+          initial={{ scale: 0.8, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.8, opacity: 0, y: 20 }}
+          transition={{ type: 'spring', damping: 20, stiffness: 300 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto scrollbar-hide relative"
+          className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden max-h-[90vh] overflow-y-auto scrollbar-hide"
           style={{
             boxShadow: `
-              0 0 30px rgba(251, 146, 60, 0.25),
-              0 0 60px rgba(251, 146, 60, 0.15),
-              0 10px 25px -5px rgba(0, 0, 0, 0.1),
-              0 4px 6px -2px rgba(0, 0, 0, 0.05),
-              inset 0 1px 0 rgba(255, 255, 255, 0.9)
-            `
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+              0 0 30px rgba(251, 146, 60, 0.15),
+              0 0 60px rgba(251, 146, 60, 0.1),
+              0 10px 30px rgba(0, 0, 0, 0.1),
+              0 4px 8px rgba(0, 0, 0, 0.05)
+            `,
           }}
         >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-900">Add Liquidity</h3>
-            {!isPending && !isConfirming && (
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-          </div>
+          {/* Close Button */}
+          {!isPending && !isConfirming && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Header */}
+          <motion.h3
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-xl sm:text-2xl font-bold text-gray-900 mb-6"
+          >
+            Add Liquidity
+          </motion.h3>
 
           {/* Token Pair Info */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mb-6 p-4 bg-white/60 backdrop-blur-lg rounded-2xl border border-white/40"
+            style={{
+              boxShadow: `
+                inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                0 4px 8px rgba(0, 0, 0, 0.05)
+              `,
+            }}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex -space-x-2">
@@ -532,17 +596,30 @@ export default function AddLiquidityModal({
                 </div>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* Amount A */}
-          <div className="mb-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mb-4"
+          >
             <div className="flex items-center justify-between mb-2 gap-2">
               <label className="text-sm font-medium text-gray-700 flex-shrink-0">{tokenASymbol}</label>
               <span className="text-xs text-gray-500 whitespace-nowrap">
                 Balance: {balanceA ? parseFloat(balanceA).toFixed(4) : '0'}
               </span>
             </div>
-            <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+            <div className="bg-white/60 backdrop-blur-lg rounded-xl p-4 border border-white/40"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                  0 4px 8px rgba(0, 0, 0, 0.05)
+                `,
+              }}
+            >
               <input
                 type="number"
                 value={amountA}
@@ -552,17 +629,30 @@ export default function AddLiquidityModal({
                 className="w-full text-xl font-bold bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
               />
             </div>
-          </div>
+          </motion.div>
 
           {/* Amount B */}
-          <div className="mb-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mb-4"
+          >
             <div className="flex items-center justify-between mb-2 gap-2">
               <label className="text-sm font-medium text-gray-700 flex-shrink-0">{tokenBSymbol}</label>
               <span className="text-xs text-gray-500 whitespace-nowrap">
                 Balance: {balanceB ? parseFloat(balanceB).toFixed(4) : '0'}
               </span>
             </div>
-            <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+            <div className="bg-white/60 backdrop-blur-lg rounded-xl p-4 border border-white/40"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                  0 4px 8px rgba(0, 0, 0, 0.05)
+                `,
+              }}
+            >
               <input
                 type="number"
                 value={amountB}
@@ -572,11 +662,22 @@ export default function AddLiquidityModal({
                 className="w-full text-xl font-bold bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
               />
             </div>
-          </div>
+          </motion.div>
 
           {/* Info Box for existing pools */}
           {!isFirstLiquidity && currentPrice && amountA && parseFloat(amountA) > 0 && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mb-4 p-3 bg-blue-50/80 backdrop-blur-sm rounded-xl border border-blue-200"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                `,
+              }}
+            >
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-blue-800">
@@ -589,12 +690,23 @@ export default function AddLiquidityModal({
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Info Box for new pools (first liquidity) */}
           {isFirstLiquidity && startingPrice && amountA && amountB && parseFloat(amountA) > 0 && parseFloat(amountB) > 0 && (
-            <div className="mb-4 p-3 bg-orange-50 rounded-xl border border-orange-200">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mb-4 p-3 bg-orange-50/80 backdrop-blur-sm rounded-xl border border-orange-200"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                `,
+              }}
+            >
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-orange-800">
@@ -607,12 +719,23 @@ export default function AddLiquidityModal({
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Warning for new pools without both amounts */}
           {isFirstLiquidity && (!amountA || !amountB || parseFloat(amountA) <= 0 || parseFloat(amountB) <= 0) && (
-            <div className="mb-4 p-3 bg-yellow-50 rounded-xl border border-yellow-200">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mb-4 p-3 bg-yellow-50/80 backdrop-blur-sm rounded-xl border border-yellow-200"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                `,
+              }}
+            >
               <div className="flex items-start gap-2">
                 <Info className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <div className="text-xs text-yellow-800">
@@ -622,22 +745,35 @@ export default function AddLiquidityModal({
                   </p>
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Error Message */}
           {errorMessage && !showProgressModal && (
-            <div className="mb-4 p-3 bg-red-50 rounded-xl border border-red-200 flex items-start gap-2">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-3 bg-red-50/80 backdrop-blur-sm rounded-xl border border-red-200 flex items-start gap-2"
+              style={{
+                boxShadow: `
+                  inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                  inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                `,
+              }}
+            >
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
               <div className="text-sm text-red-800">
                 <p className="font-medium">Error</p>
                 <p className="text-xs mt-1">{errorMessage}</p>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Add Liquidity Button */}
           <motion.button
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
             onClick={handleAddLiquidity}
             disabled={
               !walletConnected ||
@@ -661,8 +797,24 @@ export default function AddLiquidityModal({
               isConfirming ||
               (approvalStep !== 'none' && approvalStep !== 'adding')
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-orange-500 text-white hover:bg-orange-600'
+                : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700'
             }`}
+            style={!walletConnected ||
+              !isArcTestnet ||
+              !amountA ||
+              !amountB ||
+              parseFloat(amountA) <= 0 ||
+              parseFloat(amountB) <= 0 ||
+              isPending ||
+              isConfirming ||
+              (approvalStep !== 'none' && approvalStep !== 'adding') ? {} : {
+              boxShadow: `
+                inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                0 4px 12px rgba(251, 146, 60, 0.4),
+                0 2px 4px rgba(0, 0, 0, 0.1)
+              `,
+            }}
             whileHover={
               !walletConnected ||
               !isArcTestnet ||
@@ -708,193 +860,335 @@ export default function AddLiquidityModal({
 
           {/* Progress Modal */}
           <AnimatePresence>
-            {showProgressModal && !modalManuallyClosed && (
+            {showProgressModal && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+                className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
                 onClick={(e) => {
                   e.stopPropagation();
                   // Don't close modal if transaction is in progress
                   // Allow closing if process is complete (liquiditySuccess) or no active transactions
                   const canClose = liquiditySuccess || 
                     (!isPending && !isConfirming && 
-                     (approvalStep === 'none' || (isSuccess && approvalStep === 'adding')));
+                     (approvalStep === 'none' || (liquiditySuccess && completedLiquidityHash === hash)));
                   if (canClose) {
+                    setShowProgressModal(false);
+                    setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
+                    setApprovalStep('none');
+                    setLiquiditySuccess(false);
+                    setErrorMessage(null);
+                    setCompletedApprovalStep('none');
+                    setCompletedSteps(new Set());
+                    setCompletedLiquidityHash(null);
+                    setLastTransactionType(null);
+                  }
+                }}
+              >
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.8, opacity: 0, y: 20 }}
+                  transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden min-h-[200px]"
+                  style={{
+                    boxShadow: `
+                      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                      inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+                      0 0 30px rgba(251, 146, 60, 0.15),
+                      0 0 60px rgba(251, 146, 60, 0.1),
+                      0 10px 30px rgba(0, 0, 0, 0.1),
+                      0 4px 8px rgba(0, 0, 0, 0.05)
+                    `,
+                  }}
+                >
+                  {/* Close Button */}
+                  {(liquiditySuccess || 
+                    (liquiditySuccess && completedLiquidityHash === hash && !isPending && !isConfirming) ||
+                    (!isPending && !isConfirming && approvalStep === 'none')) && (
+                    <button
+                      onClick={() => {
                     setShowProgressModal(false);
                     setApprovalStep('none');
                     setLiquiditySuccess(false);
                     setErrorMessage(null);
                     setCompletedApprovalStep('none');
-                    setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
-                  }
-                }}
-              >
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
-                onClick={(e) => e.stopPropagation()}
-                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative min-h-[200px]"
-                style={{
-                  boxShadow: `
-                    0 0 30px rgba(251, 146, 60, 0.25),
-                    0 0 60px rgba(251, 146, 60, 0.15),
-                    0 10px 25px -5px rgba(0, 0, 0, 0.1),
-                    0 4px 6px -2px rgba(0, 0, 0, 0.05),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.9)
-                  `
-                }}
-                >
-                  <div className="flex items-center justify-end mb-6">
-                    {/* Show close button when:
-                        1. Liquidity was successfully added (liquiditySuccess is true)
-                        2. OR transaction succeeded and we're at adding step (all done)
-                        3. OR no transactions are in progress and not waiting for approvals
-                    */}
-                    {(liquiditySuccess || 
-                      (isSuccess && approvalStep === 'adding' && !isPending && !isConfirming) ||
-                      (!isPending && !isConfirming && approvalStep === 'none')) && (
-                      <button
-                        onClick={() => {
-                          setShowProgressModal(false);
-                          setApprovalStep('none');
-                          setLiquiditySuccess(false);
-                          setErrorMessage(null);
-                          setCompletedApprovalStep('none');
-                          setModalManuallyClosed(true); // Mark as manually closed to prevent reopening
-                          // Close the main modal after progress modal closes
-                          setTimeout(() => {
-                            setAmountA('');
-                            setAmountB('');
-                            onClose();
-                          }, 300);
-                        }}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
-                        aria-label="Close"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
+                    setCompletedSteps(new Set());
+                    setCompletedLiquidityHash(null);
+                    setLastTransactionType(null);
+                    setModalManuallyClosed(true);
+                    setTimeout(() => {
+                      setAmountA('');
+                      setAmountB('');
+                      onClose();
+                    }, 300);
+                      }}
+                      className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                      aria-label="Close"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
+
+                  {/* Header */}
+                  <motion.h3
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="text-xl sm:text-2xl font-bold text-gray-900 text-center mb-6"
+                  >
+                    Adding Liquidity
+                  </motion.h3>
 
                   <div className="space-y-4">
                     {/* Step 1: Approve Token A */}
+                    {/* Always show if we're in any approval/liquidity flow */}
                     {(approvalStep === 'approvingA' || approvalStep === 'approvingB' || approvalStep === 'adding') && (
-                      <div className="flex items-center gap-3">
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                          approvalStep === 'approvingA' && (isPending || isConfirming)
-                            ? 'bg-orange-500 text-white'
-                            : approvalStep !== 'approvingA'
-                            ? 'bg-green-500 text-white'
-                            : 'bg-gray-200 text-gray-500'
-                        }`}>
-                          {approvalStep === 'approvingA' && (isPending || isConfirming) ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : approvalStep !== 'approvingA' ? (
-                            <CheckCircle2 className="w-5 h-5" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full bg-white" />
-                          )}
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                        style={{
+                          boxShadow: `
+                            inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                            inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                            0 4px 8px rgba(0, 0, 0, 0.05)
+                          `,
+                        }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="relative flex-shrink-0">
+                            {approvalStep === 'approvingA' && (isPending || isConfirming) ? (
+                              <motion.div
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                    0 4px 12px rgba(251, 146, 60, 0.4)
+                                  `,
+                                }}
+                              >
+                                <Loader2 className="w-6 h-6 text-white animate-spin" />
+                              </motion.div>
+                            ) : completedSteps.has('approvingA') || approvalStep !== 'approvingA' ? (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: 'spring', stiffness: 200 }}
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                    0 0 20px rgba(16, 185, 129, 0.4),
+                                    0 4px 12px rgba(16, 185, 129, 0.3)
+                                  `,
+                                }}
+                              >
+                                <CheckCircle2 className="w-6 h-6 text-white" />
+                              </motion.div>
+                            ) : (
+                              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                  `,
+                                }}
+                              >
+                                <div className="w-6 h-6 rounded-full bg-white" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm ${
+                              approvalStep === 'approvingA' && (isPending || isConfirming)
+                                ? 'text-orange-600'
+                                : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                                ? 'text-green-600'
+                                : 'text-gray-500'
+                            }`}>
+                              Approve {tokenASymbol}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {approvalStep === 'approvingA' && (isPending || isConfirming) 
+                                ? 'Confirm in wallet...' 
+                                : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                                ? 'Completed'
+                                : 'Pending'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${
-                            approvalStep === 'approvingA' && (isPending || isConfirming)
-                              ? 'text-orange-600'
-                              : approvalStep !== 'approvingA'
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Approve {tokenASymbol}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {approvalStep === 'approvingA' && (isPending || isConfirming) 
-                              ? 'Confirm in wallet...' 
-                              : approvalStep !== 'approvingA'
-                              ? 'Completed'
-                              : 'Pending'}
-                          </p>
-                        </div>
-                      </div>
+                      </motion.div>
                     )}
 
                     {/* Step 2: Approve Token B */}
+                    {/* Always show if we're approving B or adding liquidity */}
                     {(approvalStep === 'approvingB' || approvalStep === 'adding') && (
-                      <div className="flex items-center gap-3">
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                          approvalStep === 'approvingB' && (isPending || isConfirming)
-                            ? 'bg-orange-500 text-white'
-                            : approvalStep === 'adding'
-                            ? 'bg-green-500 text-white'
-                            : 'bg-gray-200 text-gray-500'
-                        }`}>
-                          {approvalStep === 'approvingB' && (isPending || isConfirming) ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : approvalStep === 'adding' ? (
-                            <CheckCircle2 className="w-5 h-5" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full bg-white" />
-                          )}
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                        style={{
+                          boxShadow: `
+                            inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                            inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                            0 4px 8px rgba(0, 0, 0, 0.05)
+                          `,
+                        }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="relative flex-shrink-0">
+                            {approvalStep === 'approvingB' && (isPending || isConfirming) ? (
+                              <motion.div
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                    0 4px 12px rgba(251, 146, 60, 0.4)
+                                  `,
+                                }}
+                              >
+                                <Loader2 className="w-6 h-6 text-white animate-spin" />
+                              </motion.div>
+                            ) : completedSteps.has('approvingB') || approvalStep === 'adding' ? (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: 'spring', stiffness: 200 }}
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                    0 0 20px rgba(16, 185, 129, 0.4),
+                                    0 4px 12px rgba(16, 185, 129, 0.3)
+                                  `,
+                                }}
+                              >
+                                <CheckCircle2 className="w-6 h-6 text-white" />
+                              </motion.div>
+                            ) : (
+                              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                  `,
+                                }}
+                              >
+                                <div className="w-6 h-6 rounded-full bg-white" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm ${
+                              approvalStep === 'approvingB' && (isPending || isConfirming)
+                                ? 'text-orange-600'
+                                : completedSteps.has('approvingB') || approvalStep === 'adding'
+                                ? 'text-green-600'
+                                : 'text-gray-500'
+                            }`}>
+                              Approve {tokenBSymbol}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {approvalStep === 'approvingB' && (isPending || isConfirming) 
+                                ? 'Confirm in wallet...' 
+                                : completedSteps.has('approvingB') || approvalStep === 'adding'
+                                ? 'Completed'
+                                : 'Pending'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${
-                            approvalStep === 'approvingB' && (isPending || isConfirming)
-                              ? 'text-orange-600'
-                              : approvalStep === 'adding'
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Approve {tokenBSymbol}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {approvalStep === 'approvingB' && (isPending || isConfirming) 
-                              ? 'Confirm in wallet...' 
-                              : approvalStep === 'adding'
-                              ? 'Completed'
-                              : 'Pending'}
-                          </p>
-                        </div>
-                      </div>
+                      </motion.div>
                     )}
 
                     {/* Step 3: Add Liquidity */}
-                    {(approvalStep === 'adding' || (approvalStep !== 'none' && (isPending || isConfirming || isSuccess))) && (
-                      <div className="flex items-center gap-3">
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                          approvalStep === 'adding' && (isPending || isConfirming)
-                            ? 'bg-orange-500 text-white'
-                            : isSuccess && approvalStep === 'adding'
-                            ? 'bg-green-500 text-white'
-                            : 'bg-gray-200 text-gray-500'
-                        }`}>
-                          {approvalStep === 'adding' && (isPending || isConfirming) ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                          ) : isSuccess && approvalStep === 'adding' ? (
-                            <CheckCircle2 className="w-5 h-5" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full bg-white" />
-                          )}
+                    {approvalStep === 'adding' && (
+                      <motion.div
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.4 }}
+                        className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                        style={{
+                          boxShadow: `
+                            inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                            inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                            0 4px 8px rgba(0, 0, 0, 0.05)
+                          `,
+                        }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="relative flex-shrink-0">
+                            {approvalStep === 'adding' && (isPending || isConfirming) ? (
+                              <motion.div
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                    0 4px 12px rgba(251, 146, 60, 0.4)
+                                  `,
+                                }}
+                              >
+                                <Loader2 className="w-6 h-6 text-white animate-spin" />
+                              </motion.div>
+                            ) : completedSteps.has('adding') || (liquiditySuccess && completedLiquidityHash === hash) ? (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: 'spring', stiffness: 200 }}
+                                className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                    0 0 20px rgba(16, 185, 129, 0.4),
+                                    0 4px 12px rgba(16, 185, 129, 0.3)
+                                  `,
+                                }}
+                              >
+                                <CheckCircle2 className="w-6 h-6 text-white" />
+                              </motion.div>
+                            ) : (
+                              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                                style={{
+                                  boxShadow: `
+                                    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                    inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                                  `,
+                                }}
+                              >
+                                <div className="w-6 h-6 rounded-full bg-white" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm ${
+                              approvalStep === 'adding' && (isPending || isConfirming)
+                                ? 'text-orange-600'
+                                : completedSteps.has('adding') || (liquiditySuccess && completedLiquidityHash === hash)
+                                ? 'text-green-600'
+                                : 'text-gray-500'
+                            }`}>
+                              Add Liquidity
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {approvalStep === 'adding' && (isPending || isConfirming) 
+                                ? 'Confirm in wallet...' 
+                                : completedSteps.has('adding') || (liquiditySuccess && completedLiquidityHash === hash)
+                                ? 'Success'
+                                : 'Pending'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${
-                            approvalStep === 'adding' && (isPending || isConfirming)
-                              ? 'text-orange-600'
-                              : isSuccess && approvalStep === 'adding'
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Add Liquidity
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {approvalStep === 'adding' && isPending 
-                              ? 'Confirm in wallet...' 
-                              : isSuccess && approvalStep === 'adding'
-                              ? 'Success'
-                              : 'Pending'}
-                          </p>
-                        </div>
-                      </div>
+                      </motion.div>
                     )}
 
                     {/* Success Message */}
@@ -902,7 +1196,13 @@ export default function AddLiquidityModal({
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mt-4 p-4 bg-green-50 rounded-xl border border-green-200"
+                        className="mt-4 p-4 bg-green-50/80 backdrop-blur-sm rounded-xl border border-green-200"
+                        style={{
+                          boxShadow: `
+                            inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                            inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                          `,
+                        }}
                       >
                         <div className="flex items-center gap-2 justify-center">
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -918,13 +1218,20 @@ export default function AddLiquidityModal({
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mt-4 p-4 bg-red-50 rounded-xl border border-red-200 relative"
+                        className="mt-4 p-4 bg-red-50/80 backdrop-blur-sm rounded-xl border border-red-200 relative"
+                        style={{
+                          boxShadow: `
+                            inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+                            inset -2px -2px 4px rgba(0, 0, 0, 0.1)
+                          `,
+                        }}
                       >
                         <button
                           onClick={() => {
                             setErrorMessage(null);
                             setShowProgressModal(false);
                             setApprovalStep('none');
+                            setCompletedSteps(new Set());
                           }}
                           className="absolute top-2 right-2 text-red-400 hover:text-red-600 transition-colors"
                         >
