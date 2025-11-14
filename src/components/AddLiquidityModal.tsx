@@ -41,6 +41,10 @@ export default function AddLiquidityModal({
   const [completedLiquidityHash, setCompletedLiquidityHash] = useState<`0x${string}` | null>(null);
   // Track the last transaction type to distinguish between approval and liquidity addition success
   const [lastTransactionType, setLastTransactionType] = useState<'approval' | 'liquidity' | null>(null);
+  // Track the hash of the liquidity addition transaction specifically
+  const [liquidityTransactionHash, setLiquidityTransactionHash] = useState<`0x${string}` | null>(null);
+  // Track when we actually submitted the liquidity transaction (not just approvals)
+  const [liquidityTransactionSubmitted, setLiquidityTransactionSubmitted] = useState(false);
 
   // Get token symbols (convert addresses to symbols if needed)
   const tokenAInfo = useMemo(() => {
@@ -201,46 +205,80 @@ export default function AddLiquidityModal({
       }
     } else if (isSuccess && hash) {
       // CRITICAL: Only show success for adding liquidity, not for approvals
-      // Only show success if:
-      // 1. We're in the 'adding' step (not approving)
-      // 2. The last transaction was actually a liquidity addition (not an approval)
-      // 3. We're not pending or confirming (transaction is actually complete)
-      // 4. We haven't already shown success for this hash
-      if (approvalStep === 'adding' && 
-          lastTransactionType === 'liquidity' && 
-          !isPending && 
-          !isConfirming && 
-          completedLiquidityHash !== hash) {
-        // Mark this hash as completed to prevent duplicate success messages
-        setCompletedLiquidityHash(hash);
-        setCompletedSteps(prev => new Set(prev).add('adding')); // Mark adding liquidity as completed
-        setLiquiditySuccess(true);
-        // Auto-close after showing success
-        setTimeout(() => {
-          // Only auto-close if user hasn't manually closed
-          if (showProgressModal && !modalManuallyClosed) {
-            setShowProgressModal(false);
-            setModalManuallyClosed(true); // Mark as manually closed to prevent blank modal
-            setApprovalStep('none');
-            setLiquiditySuccess(false);
-            setCompletedApprovalStep('none');
-            setCompletedLiquidityHash(null);
-            setLastTransactionType(null);
-            setCompletedSteps(new Set());
-            // Reset and close after a delay
-            setTimeout(() => {
-              setAmountA('');
-              setAmountB('');
-              onClose();
-            }, 100);
-          }
-        }, 2500);
+      // ABSOLUTE REQUIREMENT: We must have submitted a liquidity transaction AND the hash must match
+      
+      // FIRST CHECK: Did we actually submit a liquidity transaction?
+      if (!liquidityTransactionSubmitted) {
+        // We haven't submitted a liquidity transaction yet, this must be an approval success
+        return;
       }
+      
+      // SECOND CHECK: Do we have a liquidity transaction hash? If not, this can't be a liquidity success
+      const hasLiquidityHash = liquidityTransactionHash !== null;
+      
+      // THIRD CHECK: Does the current hash match the liquidity transaction hash?
+      // This is CRITICAL - if hash doesn't match liquidityTransactionHash, this is NOT a liquidity transaction success
+      const hashMatches = hasLiquidityHash && liquidityTransactionHash === hash;
+      
+      // Only proceed if hash matches (meaning isSuccess is for the liquidity transaction)
+      if (!hashMatches) {
+        // This is not a liquidity transaction success, ignore it
+        return;
+      }
+      
+      // FOURTH CHECK: Are we in the adding step?
+      if (approvalStep !== 'adding') {
+        // We're not in the adding step, ignore
+        return;
+      }
+      
+      // FIFTH CHECK: Is the transaction actually complete?
+      if (isPending || isConfirming) {
+        // Transaction is still pending or confirming, don't show success yet
+        return;
+      }
+      
+      // SIXTH CHECK: Have we already shown success for this hash?
+      if (completedLiquidityHash === hash) {
+        // Already shown success for this hash, ignore
+        return;
+      }
+      
+      // ALL CHECKS PASSED - This is a confirmed liquidity transaction success
+      // Mark this hash as completed to prevent duplicate success messages
+      setCompletedLiquidityHash(hash);
+      setCompletedSteps(prev => new Set(prev).add('adding')); // Mark adding liquidity as completed
+      setLiquiditySuccess(true);
+      
+      // Auto-close after showing success
+      setTimeout(() => {
+        // Only auto-close if user hasn't manually closed
+        if (showProgressModal && !modalManuallyClosed) {
+          setShowProgressModal(false);
+          setModalManuallyClosed(true); // Mark as manually closed to prevent blank modal
+          setApprovalStep('none');
+          setLiquiditySuccess(false);
+          setCompletedApprovalStep('none');
+          setCompletedLiquidityHash(null);
+          setLiquidityTransactionHash(null);
+          setLiquidityTransactionSubmitted(false);
+          setLastTransactionType(null);
+          setCompletedSteps(new Set());
+          // Reset and close after a delay
+          setTimeout(() => {
+            setAmountA('');
+            setAmountB('');
+            onClose();
+          }, 100);
+        }
+      }, 2500);
+      
       // For approvals (approvingA or approvingB), DON'T show success - let auto-proceed handle it
       // The auto-proceed useEffect will take over and keep the modal open
     } else if (error && approvalStep === 'adding') {
       // Only show error modal for liquidity addition errors, not approval errors
       setErrorMessage(formatErrorMessage(error));
+      setLiquidityTransactionSubmitted(false); // Reset submitted flag on error
       setTimeout(() => {
         if (!modalManuallyClosed) {
           setShowProgressModal(false);
@@ -262,16 +300,35 @@ export default function AddLiquidityModal({
         setShowProgressModal(true);
       }
     }
-  }, [isPending, isConfirming, isSuccess, error, approvalStep, showProgressModal, onClose, liquiditySuccess, modalManuallyClosed, hash, completedLiquidityHash, lastTransactionType]);
+  }, [isPending, isConfirming, isSuccess, error, approvalStep, showProgressModal, onClose, liquiditySuccess, modalManuallyClosed, hash, completedLiquidityHash, lastTransactionType, liquidityTransactionHash, liquidityTransactionSubmitted]);
 
   // Track which approval just completed to prevent duplicate triggers
   const [completedApprovalStep, setCompletedApprovalStep] = useState<'none' | 'approvingA' | 'approvingB'>('none');
+
+  // Track liquidity transaction hash when it's submitted
+  useEffect(() => {
+    // When we're adding liquidity and a hash appears, track it
+    if (approvalStep === 'adding' && 
+        lastTransactionType === 'liquidity' && 
+        hash && 
+        liquidityTransactionHash !== hash) {
+      setLiquidityTransactionHash(hash);
+    }
+  }, [approvalStep, lastTransactionType, hash, liquidityTransactionHash]);
 
   // Auto-proceed after approval completes
   useEffect(() => {
     // Only proceed when approval transaction succeeds and we haven't already processed this approval
     // IMPORTANT: Check that we're still in approval mode (not already moved to adding)
-    if (isSuccess && !isPending && !isConfirming && poolAddress && (approvalStep === 'approvingA' || approvalStep === 'approvingB') && completedApprovalStep !== approvalStep) {
+    // CRITICAL: Ensure this hash is NOT the liquidity transaction hash (approvals have different hashes)
+    const isApprovalHash = hash !== liquidityTransactionHash;
+    if (isSuccess && 
+        !isPending && 
+        !isConfirming && 
+        poolAddress && 
+        (approvalStep === 'approvingA' || approvalStep === 'approvingB') && 
+        completedApprovalStep !== approvalStep &&
+        isApprovalHash) {
       const proceed = async () => {
         try {
           // Mark this approval as completed to prevent duplicate processing
@@ -320,6 +377,7 @@ export default function AddLiquidityModal({
               setCompletedApprovalStep('none'); // Reset to allow next approval
               setLastTransactionType('approval'); // Track that next transaction is approval
               setLiquiditySuccess(false); // Ensure liquidity success is false
+              setLiquidityTransactionSubmitted(false); // Clear submitted flag for approval
               setShowProgressModal(true); // Keep modal open
               approveToken(finalTokenB, poolAddress);
             } else {
@@ -328,7 +386,10 @@ export default function AddLiquidityModal({
               setCompletedApprovalStep('none'); // Reset
               setLastTransactionType('liquidity'); // Track that next transaction is liquidity addition
               setLiquiditySuccess(false); // Reset liquidity success before starting
+              setLiquidityTransactionHash(null); // Reset liquidity transaction hash
+              setLiquidityTransactionSubmitted(false); // Reset submitted flag
               setShowProgressModal(true); // Ensure modal stays open during add liquidity
+              setLiquidityTransactionSubmitted(true); // Mark that we're submitting liquidity transaction
               await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
             }
           } else if (approvalStep === 'approvingB') {
@@ -339,6 +400,8 @@ export default function AddLiquidityModal({
               setCompletedApprovalStep('none'); // Reset to allow next approval
               setLastTransactionType('approval'); // Track that next transaction is approval
               setLiquiditySuccess(false); // Ensure liquidity success is false
+              setLiquidityTransactionHash(null); // Clear liquidity hash for approval
+              setLiquidityTransactionSubmitted(false); // Clear submitted flag for approval
               setShowProgressModal(true);
               approveToken(finalTokenA, poolAddress);
             } else {
@@ -347,7 +410,10 @@ export default function AddLiquidityModal({
               setCompletedApprovalStep('none'); // Reset
               setLastTransactionType('liquidity'); // Track that next transaction is liquidity addition
               setLiquiditySuccess(false); // Reset liquidity success before starting
+              setLiquidityTransactionHash(null); // Reset liquidity transaction hash
+              setLiquidityTransactionSubmitted(false); // Reset submitted flag
               setShowProgressModal(true); // Ensure modal stays open during add liquidity
+              setLiquidityTransactionSubmitted(true); // Mark that we're submitting liquidity transaction
               await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
             }
           }
@@ -371,7 +437,7 @@ export default function AddLiquidityModal({
       };
       proceed();
     }
-  }, [isSuccess, approvalStep, poolAddress, finalTokenA, finalTokenB, amountA, amountB, approveToken, addLiquidity, isPending, isConfirming, publicClient, walletAddress, completedApprovalStep, showProgressModal]);
+  }, [isSuccess, approvalStep, poolAddress, finalTokenA, finalTokenB, amountA, amountB, approveToken, addLiquidity, isPending, isConfirming, publicClient, walletAddress, completedApprovalStep, showProgressModal, hash, liquidityTransactionHash]);
 
   const formatErrorMessage = (err: any): string => {
     if (!err) return 'Unknown error occurred';
@@ -494,11 +560,15 @@ export default function AddLiquidityModal({
       setApprovalStep('adding');
       setLastTransactionType('liquidity'); // Set BEFORE calling addLiquidity
       setLiquiditySuccess(false); // Reset liquidity success before starting
+      setLiquidityTransactionHash(null); // Reset liquidity transaction hash
+      setLiquidityTransactionSubmitted(false); // Reset submitted flag
+      setLiquidityTransactionSubmitted(true); // Mark that we're submitting liquidity transaction
       await addLiquidity(finalTokenA, finalTokenB, amountA, amountB);
     } catch (err: any) {
       setErrorMessage(formatErrorMessage(err));
       setShowProgressModal(false);
       setApprovalStep('none');
+      setLiquidityTransactionSubmitted(false); // Reset submitted flag on error
     }
   };
 
@@ -917,6 +987,8 @@ export default function AddLiquidityModal({
                     setCompletedApprovalStep('none');
                     setCompletedSteps(new Set());
                     setCompletedLiquidityHash(null);
+                    setLiquidityTransactionHash(null);
+                    setLiquidityTransactionSubmitted(false);
                     setLastTransactionType(null);
                     setModalManuallyClosed(true);
                     setTimeout(() => {
@@ -1139,7 +1211,7 @@ export default function AddLiquidityModal({
                               >
                                 <Loader2 className="w-6 h-6 text-white animate-spin" />
                               </motion.div>
-                            ) : completedSteps.has('adding') || (liquiditySuccess && completedLiquidityHash === hash) ? (
+                            ) : (completedSteps.has('adding') && liquidityTransactionHash === hash && !isPending && !isConfirming) || (liquiditySuccess && completedLiquidityHash === hash && liquidityTransactionHash === hash && !isPending && !isConfirming) ? (
                               <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
@@ -1173,7 +1245,7 @@ export default function AddLiquidityModal({
                             <p className={`font-semibold text-sm ${
                               approvalStep === 'adding' && (isPending || isConfirming)
                                 ? 'text-orange-600'
-                                : completedSteps.has('adding') || (liquiditySuccess && completedLiquidityHash === hash)
+                                : (completedSteps.has('adding') && liquidityTransactionHash === hash && !isPending && !isConfirming) || (liquiditySuccess && completedLiquidityHash === hash && liquidityTransactionHash === hash && !isPending && !isConfirming)
                                 ? 'text-green-600'
                                 : 'text-gray-500'
                             }`}>
@@ -1182,7 +1254,7 @@ export default function AddLiquidityModal({
                             <p className="text-xs text-gray-500 mt-1">
                               {approvalStep === 'adding' && (isPending || isConfirming) 
                                 ? 'Confirm in wallet...' 
-                                : completedSteps.has('adding') || (liquiditySuccess && completedLiquidityHash === hash)
+                                : (completedSteps.has('adding') && liquidityTransactionHash === hash && !isPending && !isConfirming) || (liquiditySuccess && completedLiquidityHash === hash && liquidityTransactionHash === hash && !isPending && !isConfirming)
                                 ? 'Success'
                                 : 'Pending'}
                             </p>
@@ -1192,7 +1264,12 @@ export default function AddLiquidityModal({
                     )}
 
                     {/* Success Message */}
-                    {liquiditySuccess && (
+                    {/* Only show success when liquidity transaction is confirmed, not just when flag is set */}
+                    {liquiditySuccess && 
+                     liquidityTransactionHash === hash &&
+                     !isPending && 
+                     !isConfirming && 
+                     approvalStep === 'adding' && (
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}

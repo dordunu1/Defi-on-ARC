@@ -19,6 +19,7 @@ const CHANGELOG: ChangelogEntry[] = [
       'Fixed TVL calculation to match indexer values',
       'Improved token logo handling for custom tokens',
       'Added proper routing with React Router - tabs now persist on refresh',
+      'Removed admin wallet restriction for pool creation - now requires minimum 5,000 USDC balance',
     ],
   },
   {

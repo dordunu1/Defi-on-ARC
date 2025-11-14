@@ -18,11 +18,8 @@ interface CustomToken {
   decimals: number;
 }
 
-// Allowed wallet addresses for pool creation
-const ALLOWED_WALLETS = [
-  '0x34B5e3B8465e0A4b40b4D0819C1eB6c38E160b33',
-  '0xd67F44f3CAD319fBb0308Dfb3bF2e1B31D4a93b6',
-].map(addr => addr.toLowerCase());
+// Minimum USDC balance required to create a pool (5,000 USDC)
+const MIN_USDC_BALANCE = 5000;
 
 type Step = 'select-tokens' | 'enter-amounts';
 
@@ -46,11 +43,28 @@ export default function CreatePool() {
   
   const isArcTestnet = chainId === 5042002;
 
-  // Check if wallet is authorized for pool creation
-  const isAuthorized = useMemo(() => {
-    if (!address || !isConnected) return false;
-    return ALLOWED_WALLETS.includes(address.toLowerCase());
-  }, [address, isConnected]);
+  // Get USDC balance early for authorization check
+  const { data: balanceUSDC } = useReadContract({
+    address: TOKENS.USDC.address as Address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isConnected && isArcTestnet },
+  });
+
+  // Check if user has sufficient USDC balance for pool creation
+  const hasSufficientUSDC = useMemo(() => {
+    if (!balanceUSDC || !isConnected) return false;
+    // USDC has 6 decimals
+    const usdcBalance = Number(formatUnits(balanceUSDC, TOKENS.USDC.decimals));
+    return usdcBalance >= MIN_USDC_BALANCE;
+  }, [balanceUSDC, isConnected]);
+
+  // Get formatted USDC balance for display
+  const usdcBalanceFormatted = useMemo(() => {
+    if (!balanceUSDC || !isConnected) return '0.00';
+    return formatUnits(balanceUSDC, TOKENS.USDC.decimals);
+  }, [balanceUSDC, isConnected]);
 
   const isValidA = tokenA && isAddress(tokenA);
   const isValidB = tokenB && isAddress(tokenB);
@@ -126,8 +140,8 @@ export default function CreatePool() {
     
     // Auto-fetch when valid address is detected
     if (input && isAddress(input)) {
-      // Check authorization before proceeding
-      if (isConnected && !isAuthorized) {
+      // Check USDC balance requirement before proceeding
+      if (isConnected && !hasSufficientUSDC) {
         setShowUnauthorizedModal(true);
         setAddressInput('');
         return;
@@ -145,7 +159,7 @@ export default function CreatePool() {
         setShowTokenSelector(null);
       }
     }
-  }, [fetchTokenInfo, isConnected, isAuthorized]);
+  }, [fetchTokenInfo, isConnected, hasSufficientUSDC]);
   
   // Get token display info (symbol or custom token symbol)
   const getTokenDisplay = useCallback((tokenAddress: Address | string): { symbol: string; name?: string; isCustom: boolean } => {
@@ -168,8 +182,8 @@ export default function CreatePool() {
 
   // Select token from dropdown
   const selectToken = (tokenSymbol: TokenSymbol | Address, type: 'A' | 'B') => {
-    // Check authorization before proceeding
-    if (isConnected && !isAuthorized) {
+    // Check USDC balance requirement before proceeding
+    if (isConnected && !hasSufficientUSDC) {
       setShowUnauthorizedModal(true);
       setShowTokenSelector(null);
       return;
@@ -274,14 +288,6 @@ export default function CreatePool() {
 
   const { data: balanceSACS } = useReadContract({
     address: TOKENS.SACS.address as Address,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: address ? [address] : undefined,
-    query: { enabled: !!address && isConnected && isArcTestnet },
-  });
-
-  const { data: balanceUSDC } = useReadContract({
-    address: TOKENS.USDC.address as Address,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
@@ -460,8 +466,8 @@ export default function CreatePool() {
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
   const handleContinueToAmounts = () => {
-    // Check authorization before proceeding
-    if (isConnected && !isAuthorized) {
+    // Check USDC balance requirement before proceeding
+    if (isConnected && !hasSufficientUSDC) {
       setShowUnauthorizedModal(true);
       return;
     }
@@ -497,8 +503,8 @@ export default function CreatePool() {
   };
 
   const handleCreatePool = async () => {
-    // Check authorization before proceeding
-    if (isConnected && !isAuthorized) {
+    // Check USDC balance requirement before proceeding
+    if (isConnected && !hasSufficientUSDC) {
       setShowUnauthorizedModal(true);
       return;
     }
@@ -2065,7 +2071,7 @@ export default function CreatePool() {
                     <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
                       <AlertCircle className="w-6 h-6 text-orange-600" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900">Pool Creation Restricted</h3>
+                    <h3 className="text-xl font-bold text-gray-900">Insufficient USDC Balance</h3>
                   </div>
                   <button
                     onClick={() => setShowUnauthorizedModal(false)}
@@ -2077,21 +2083,28 @@ export default function CreatePool() {
 
                 <div className="space-y-4">
                   <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
-                    <p className="text-sm text-gray-700 leading-relaxed">
-                      Pool creation is currently restricted to admin wallets to avoid unnecessary pools.
+                    <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                      To create a liquidity pool, you need a minimum balance of <span className="font-semibold text-orange-600">{MIN_USDC_BALANCE.toLocaleString()} USDC</span>.
                     </p>
+                    {isConnected && (
+                      <div className="mt-3 pt-3 border-t border-orange-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Your USDC Balance:</span>
+                          <span className={`text-sm font-semibold ${parseFloat(usdcBalanceFormatted) >= MIN_USDC_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
+                            {parseFloat(usdcBalanceFormatted).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
+                          </span>
+                        </div>
+                        {parseFloat(usdcBalanceFormatted) < MIN_USDC_BALANCE && (
+                          <div className="mt-2 text-xs text-orange-600">
+                            You need {((MIN_USDC_BALANCE - parseFloat(usdcBalanceFormatted)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} more USDC to create a pool.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <p className="text-sm text-gray-600 text-center">
-                    If you need to create a pool, please contact the owner on{' '}
-                    <a
-                      href="https://x.com/realchriswilder"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-orange-600 hover:text-orange-700 font-semibold underline"
-                    >
-                      X
-                    </a>
+                    This requirement helps ensure pools are created with sufficient initial liquidity.
                   </p>
 
                   <motion.button
