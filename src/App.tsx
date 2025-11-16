@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { RainbowKitProvider, ConnectButton } from '@rainbow-me/rainbowkit';
 import { WagmiProvider, useAccount } from 'wagmi';
@@ -14,7 +14,9 @@ import MaintenancePage from './components/MaintenancePage';
 import XFollowFAB from './components/XFollowFAB';
 import DiscordWidget from './components/DiscordWidget';
 import ChangelogDocsWrapper from './components/ChangelogDocsWrapper';
+import VersionUpdateModal from './components/VersionUpdateModal';
 import { SwapEventsCacheProvider } from './contexts/SwapEventsCache';
+import { useVersionCheck } from './hooks/useVersionCheck';
 import { Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -34,6 +36,20 @@ function AppContent() {
   const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Version check - polls every 30 seconds for updates
+  const { updateAvailable, forceRefresh } = useVersionCheck(30000);
+
+  // Auto-refresh after 10 seconds if update is available
+  useEffect(() => {
+    if (updateAvailable) {
+      const autoRefreshTimer = setTimeout(() => {
+        forceRefresh();
+      }, 10000); // 10 seconds
+
+      return () => clearTimeout(autoRefreshTimer);
+    }
+  }, [updateAvailable, forceRefresh]);
 
   // Check if we're on the landing page route
   const isLandingPage = location.pathname === '/';
@@ -101,6 +117,12 @@ function AppContent() {
           
           {/* Changelog and Docs */}
           <ChangelogDocsWrapper />
+
+          {/* Version Update Modal */}
+          <VersionUpdateModal
+            isOpen={updateAvailable}
+            onRefresh={forceRefresh}
+          />
         </div>
       )}
     </>
