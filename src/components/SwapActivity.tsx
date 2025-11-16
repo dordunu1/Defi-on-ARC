@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight, ExternalLink, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatUnits, type Address, isAddress } from 'viem';
@@ -179,13 +179,54 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
   }, [poolAddress, supabaseUrl, supabaseKey, fromTokenAddr, toTokenAddr, getCachedEvents, isCached, updatePoolEvents, preloadPool]);
 
 
-  // Pagination calculations
-  const totalPages = Math.ceil(swapEvents.length / EVENTS_PER_PAGE);
+  // Get token decimals from address (helper function)
+  const getTokenDecimals = (address: string): number => {
+    const tokenEntry = Object.entries(TOKENS).find(
+      ([_, info]) => info.address.toLowerCase() === address.toLowerCase()
+    );
+    return tokenEntry ? tokenEntry[1].decimals : 18;
+  };
+
+  // Calculate USDC value of a swap event
+  const getUSDCValue = useCallback((event: SwapEvent): number => {
+    const usdcAddr = TOKENS.USDC.address.toLowerCase();
+    const tokenInLower = event.token_in.toLowerCase();
+    const tokenOutLower = event.token_out.toLowerCase();
+    
+    // If swapping from USDC, value = amount_in
+    if (tokenInLower === usdcAddr) {
+      const tokenInDecimals = getTokenDecimals(event.token_in);
+      const amountIn = parseFloat(formatUnits(BigInt(event.amount_in), tokenInDecimals));
+      return amountIn;
+    }
+    
+    // If swapping to USDC, value = amount_out
+    if (tokenOutLower === usdcAddr) {
+      const tokenOutDecimals = getTokenDecimals(event.token_out);
+      const amountOut = parseFloat(formatUnits(BigInt(event.amount_out), tokenOutDecimals));
+      return amountOut;
+    }
+    
+    // Neither is USDC - return 0 (shouldn't happen in normal pairs, but handle gracefully)
+    return 0;
+  }, []);
+
+  // Filter swaps below $3 USDC
+  const MIN_USDC_VALUE = 3;
+  const filteredSwapEvents = useMemo(() => {
+    return swapEvents.filter(event => {
+      const usdcValue = getUSDCValue(event);
+      return usdcValue >= MIN_USDC_VALUE;
+    });
+  }, [swapEvents, getUSDCValue]);
+
+  // Pagination calculations (using filtered events)
+  const totalPages = Math.ceil(filteredSwapEvents.length / EVENTS_PER_PAGE);
   const paginatedEvents = useMemo(() => {
     const startIdx = (currentPage - 1) * EVENTS_PER_PAGE;
     const endIdx = startIdx + EVENTS_PER_PAGE;
-    return swapEvents.slice(startIdx, endIdx);
-  }, [swapEvents, currentPage]);
+    return filteredSwapEvents.slice(startIdx, endIdx);
+  }, [filteredSwapEvents, currentPage]);
 
   // Reset to page 1 when pool changes
   useEffect(() => {
@@ -198,14 +239,6 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
       ([_, info]) => info.address.toLowerCase() === address.toLowerCase()
     );
     return tokenEntry ? (tokenEntry[0] as TokenSymbol) : address.slice(0, 6) + '...';
-  };
-
-  // Get token decimals from address
-  const getTokenDecimals = (address: string): number => {
-    const tokenEntry = Object.entries(TOKENS).find(
-      ([_, info]) => info.address.toLowerCase() === address.toLowerCase()
-    );
-    return tokenEntry ? tokenEntry[1].decimals : 18;
   };
 
   // Format amount
@@ -300,7 +333,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
         <div className="flex items-center justify-center h-32">
           <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
         </div>
-      ) : swapEvents.length === 0 ? (
+      ) : filteredSwapEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-32 p-4">
           <p className="text-sm text-gray-500 text-center">
             No swap activity for this pair yet
@@ -439,10 +472,10 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
       )}
 
       {/* Pagination Controls */}
-      {swapEvents.length > EVENTS_PER_PAGE && (
+      {filteredSwapEvents.length > EVENTS_PER_PAGE && (
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
           <div className="text-sm text-gray-600">
-            Showing {((currentPage - 1) * EVENTS_PER_PAGE) + 1} to {Math.min(currentPage * EVENTS_PER_PAGE, swapEvents.length)} of {swapEvents.length} trades
+            Showing {((currentPage - 1) * EVENTS_PER_PAGE) + 1} to {Math.min(currentPage * EVENTS_PER_PAGE, filteredSwapEvents.length)} of {swapEvents.length} trades
           </div>
           <div className="flex items-center gap-2">
             <button
