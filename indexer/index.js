@@ -471,12 +471,21 @@ async function index() {
 
   // Initialize last processed block if needed
   if (!lastProcessedBlock) {
-    // Start from 10,000 blocks ago or deployment block
-    lastProcessedBlock = currentBlock - BigInt(10000);
+    // Start from current block (real-time indexing only)
+    // Only look back 100 blocks for safety to catch any recent events
+    lastProcessedBlock = currentBlock - BigInt(100);
+    console.log(`Starting indexer from block ${lastProcessedBlock} (current: ${currentBlock})`);
   }
 
   const fromBlock = lastProcessedBlock + BigInt(1);
-  const toBlock = currentBlock;
+  let toBlock = currentBlock;
+
+  // Safety: Limit block range to max 1000 blocks per iteration to prevent timeouts
+  const MAX_BLOCKS_PER_ITERATION = BigInt(1000);
+  if (toBlock - fromBlock > MAX_BLOCKS_PER_ITERATION) {
+    console.log(`⚠️ Block range too large (${toBlock - fromBlock} blocks), limiting to ${MAX_BLOCKS_PER_ITERATION} blocks`);
+    toBlock = fromBlock + MAX_BLOCKS_PER_ITERATION;
+  }
 
   if (fromBlock > toBlock) {
     console.log('No new blocks to process, but updating pool reserves from on-chain anyway...');
