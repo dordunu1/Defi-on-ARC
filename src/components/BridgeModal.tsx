@@ -38,6 +38,9 @@ const STEP_LABELS: Record<BridgeStep, { title: string; description: string }> = 
 
 export type BridgeDirection = 'sepolia-to-arc' | 'arc-to-sepolia';
 
+// Bridge maintenance mode - controlled by environment variable VITE_BRIDGE_MAINTENANCE_MODE
+const BRIDGE_MAINTENANCE_MODE = import.meta.env.VITE_BRIDGE_MAINTENANCE_MODE === 'true';
+
 export default function BridgeModal({ isOpen = true, onClose, asPage = false }: BridgeModalProps) {
   const { address, isConnected, chainId } = useAccount();
   
@@ -414,6 +417,42 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   };
 
   if (!isOpen && !asPage) return null;
+
+  // Show maintenance message if bridge is in maintenance mode
+  if (BRIDGE_MAINTENANCE_MODE) {
+    return (
+      <div className={`${asPage ? 'w-full max-w-2xl mx-auto px-4' : ''}`}>
+        <motion.div
+          className="bg-white rounded-3xl p-8 md:p-12 border border-orange-200 shadow-xl relative overflow-hidden"
+          style={{
+            boxShadow: `
+              0 0 20px rgba(251, 146, 60, 0.15),
+              0 0 40px rgba(251, 146, 60, 0.1),
+              0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -1px rgba(0, 0, 0, 0.06),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9)
+            `
+          }}
+          initial={asPage ? { opacity: 0, y: 20 } : { opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+        >
+          <div className="flex flex-col items-center justify-center text-center py-8">
+            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+              <Clock className="w-8 h-8 text-orange-500" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">Bridge Under Maintenance</h2>
+            <p className="text-gray-600 text-base sm:text-lg mb-2">
+              We'll resume bridge operations soon.
+            </p>
+            <p className="text-sm text-gray-500">
+              Updates will be shared when available.
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   const content = (
     <div className={`${asPage ? 'w-full max-w-2xl mx-auto px-4' : ''}`}>

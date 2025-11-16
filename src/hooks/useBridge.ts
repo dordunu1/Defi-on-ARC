@@ -125,27 +125,45 @@ export function useBridge() {
       let lastError;
 
       if (sourceChainId === SEPOLIA_CHAIN_ID) {
-        // Try multiple Sepolia RPC endpoints for reliability
-        const sepoliaRpcUrls = [
-          'https://ethereum-sepolia-rpc.publicnode.com',
-          'https://rpc.sepolia.org',
-          'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-        ];
+        // Use multiple RPC endpoints with smart fallback
+        // Alchemy free tier has rate limits (429 errors), so we prioritize public RPCs first
+        const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || '';
+        const sepoliaRpcUrls = ALCHEMY_API_KEY
+          ? [
+              'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode (most reliable, no rate limits)
+              'https://rpc.sepolia.org', // Sepolia Foundation (reliable)
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, // Alchemy (use last to avoid rate limits)
+            ]
+          : [
+              'https://ethereum-sepolia-rpc.publicnode.com',
+              'https://rpc.sepolia.org',
+              'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+            ];
         
+        let connectedRpc = '';
         for (const rpcUrl of sepoliaRpcUrls) {
           try {
             publicClient = createPublicClient({
               chain: sepolia,
               transport: http(rpcUrl, {
-                retryCount: 2,
-                timeout: 8000,
+                retryCount: 1, // Reduce retries to fail faster and try next RPC
+                timeout: 5000, // Shorter timeout
               }),
             });
             
             await publicClient.getBlockNumber();
-            console.log(`✅ Connected to Sepolia via: ${rpcUrl}`);
+            connectedRpc = rpcUrl.includes('alchemy') ? 'Alchemy' 
+              : rpcUrl.includes('publicnode') ? 'PublicNode'
+              : rpcUrl.includes('rpc.sepolia') ? 'Sepolia Foundation'
+              : 'Other';
+            console.log(`✅ Connected to Sepolia via: ${connectedRpc}`);
             break;
           } catch (err: any) {
+            const rpcName = rpcUrl.includes('alchemy') ? 'Alchemy' 
+              : rpcUrl.includes('publicnode') ? 'PublicNode'
+              : rpcUrl.includes('rpc.sepolia') ? 'Sepolia Foundation'
+              : 'Other';
+            console.warn(`⚠️ Failed to connect via ${rpcName}, trying next RPC...`);
             lastError = err;
             continue;
           }
@@ -432,24 +450,63 @@ export function useBridge() {
       // We set state to indicate bridge is in progress - Bridge Kit will handle chain switching automatically
       setState(prev => ({ ...prev, step: 'approving' }));
 
-      // Execute the bridge
+      // Log bridge start
+      const bridgeStartTime = Date.now();
+      const sourceChainName = (sourceChain.chain as any).name || `Chain ${sourceChainId}`;
+      const destChainName = (destinationChain.chain as any).name || `Chain ${destinationChainId}`;
+      console.log('🌉 Starting bridge:', {
+        direction,
+        amount,
+        sourceChain: sourceChainName,
+        destinationChain: destChainName,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Execute the bridge with enhanced logging
       // Bridge Kit handles:
       // 1. Approval transaction (if needed)
       // 2. Transfer transaction on source chain
       // 3. Automatic chain switching to destination chain
-      // 4. Receive message transaction on destination chain
+      // 4. Fetch attestation (this can take time - Circle API indexing delay)
+      // 5. Receive message transaction on destination chain
       // The bridge() method completes only after ALL steps are done or user cancels
-      const result = await kit.bridge({
-        from: {
-          adapter: adapter,
-          chain: sourceChain.chain,
-        },
-        to: {
-          adapter: adapter,
-          chain: destinationChain.chain,
-        },
-        amount: amount,
-      });
+      
+      // Set up interval to log progress every 30 seconds
+      // This helps debug long-running bridges (especially attestation fetching)
+      const progressInterval = setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - bridgeStartTime) / 1000);
+        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+        const remainingSeconds = elapsedSeconds % 60;
+        const timeStr = elapsedMinutes > 0 
+          ? `${elapsedMinutes}m ${remainingSeconds}s` 
+          : `${elapsedSeconds}s`;
+        
+        console.log(`⏳ Bridge in progress... (${timeStr} elapsed)`);
+        console.log(`   Direction: ${direction}`);
+        console.log(`   ⚠️ If stuck here, Bridge Kit is waiting for attestation from Circle API`);
+        console.log(`   📝 Attestation fetching can take 2-10 minutes - this is normal`);
+        console.log(`   🔗 Check Circle API: https://iris-api-sandbox.circle.com/v2/messages/`);
+      }, 30000); // Log every 30 seconds
+
+      let result;
+      try {
+        result = await kit.bridge({
+          from: {
+            adapter: adapter,
+            chain: sourceChain.chain,
+          },
+          to: {
+            adapter: adapter,
+            chain: destinationChain.chain,
+          },
+          amount: amount,
+        });
+      } finally {
+        clearInterval(progressInterval);
+      }
+
+      const bridgeDuration = Math.floor((Date.now() - bridgeStartTime) / 1000);
+      console.log(`✅ Bridge completed in ${bridgeDuration}s`);
 
       // Helper function to safely stringify BigInt values
       const safeStringify = (obj: any): string => {
@@ -478,33 +535,53 @@ export function useBridge() {
       let receiveTxHash: string | undefined;
 
       const resultAny = result as any;
+      let attestationStep: any = null;
       
-      if (resultAny && resultAny.steps && Array.isArray(resultAny.steps)) {
-        console.log('Found steps array with', resultAny.steps.length, 'steps');
-        
-        // Loop through steps to find transaction hashes
+      // Log all steps for debugging attestation fetching
+      if (resultAny?.steps && Array.isArray(resultAny.steps)) {
+        console.log('📋 Bridge steps breakdown:');
         resultAny.steps.forEach((step: any, index: number) => {
-          console.log(`Step ${index}: ${step.name} - ${step.state}`);
+          const stepName = step.name || 'unknown';
+          const stepState = step.state || 'unknown';
+          console.log(`   Step ${index + 1}: ${stepName} - ${stepState}`);
           
-            if (step.name === 'burn' && step.txHash) {
-            // Burn/transfer transaction on source chain
-            sourceTxHash = step.txHash;
-            console.log('Found sourceTxHash from burn step:', sourceTxHash);
-          } else if (step.name === 'mint' && step.txHash) {
-            // Mint/receive transaction on destination chain
-            receiveTxHash = step.txHash;
-            console.log('Found receiveTxHash from mint step:', receiveTxHash);
-          } else if (step.name === 'approve' && step.txHash) {
-            // Approval transaction - we could use this as fallback for source
-            if (!sourceTxHash) {
-              sourceTxHash = step.txHash;
-              console.log('Using approval txHash as sourceTxHash fallback:', sourceTxHash);
+          // Special logging for attestation step
+          if (stepName === 'fetchAttestation') {
+            attestationStep = step;
+            console.log('   🔍 Attestation step details:', {
+              state: stepState,
+              messageHash: step.messageHash || 'N/A',
+              transactionHash: step.transactionHash || 'N/A',
+              error: step.error || 'None',
+              duration: step.duration ? `${step.duration}ms` : 'N/A',
+            });
+            if (step.error) {
+              console.error('   ❌ Attestation error:', step.error);
             }
+            if (step.messageHash) {
+              console.log(`   📨 Message Hash: ${step.messageHash}`);
+            }
+          }
+          
+          if (step.txHash) {
+            console.log(`      TX Hash: ${step.txHash}`);
+          }
+          
+          // Extract transaction hashes
+          if (stepName === 'burn' && step.txHash) {
+            sourceTxHash = step.txHash;
+            console.log('   ✅ Found sourceTxHash from burn step:', sourceTxHash);
+          } else if (stepName === 'mint' && step.txHash) {
+            receiveTxHash = step.txHash;
+            console.log('   ✅ Found receiveTxHash from mint step:', receiveTxHash);
+          } else if (stepName === 'approve' && step.txHash && !sourceTxHash) {
+            sourceTxHash = step.txHash;
+            console.log('   ✅ Using approval txHash as sourceTxHash fallback:', sourceTxHash);
           }
         });
       } else {
         // Fallback: try other possible result structures
-        console.log('No steps array found, trying alternative structures...');
+        console.log('⚠️ No steps array found, trying alternative structures...');
         
         if (resultAny.txHash) {
           sourceTxHash = resultAny.txHash;
