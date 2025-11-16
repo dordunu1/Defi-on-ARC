@@ -53,8 +53,15 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
       return;
     }
 
-    const fetchSwapEvents = async () => {
-      setIsLoading(true);
+    let isMounted = true;
+    let pollInterval: NodeJS.Timeout | null = null;
+    let lastTxHash: string | null = null; // Track last tx hash to detect new events
+
+    const fetchSwapEvents = async (isBackgroundPoll = false) => {
+      // Only show loading on initial load, not on background polls
+      if (!isBackgroundPoll) {
+        setIsLoading(true);
+      }
       try {
         const poolAddrLower = poolAddress.toLowerCase();
         let allEvents: SwapEvent[] = [];
@@ -117,15 +124,48 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
           }
         }
 
-        setSwapEvents(allEvents);
+        if (isMounted) {
+          // Only update if we have new events (check by comparing first tx hash)
+          if (allEvents.length > 0) {
+            const currentFirstTxHash = allEvents[0].tx_hash;
+            // If this is a background poll and we have the same first tx, no new events
+            if (isBackgroundPoll && lastTxHash === currentFirstTxHash) {
+              // No new events, don't update state (prevents refresh)
+              return;
+            }
+            lastTxHash = currentFirstTxHash;
+          }
+          
+          setSwapEvents(allEvents);
+        }
       } catch (error) {
-        console.error('Error fetching swap events:', error);
+        if (!isBackgroundPoll) {
+          console.error('Error fetching swap events:', error);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted && !isBackgroundPoll) {
+          setIsLoading(false);
+        }
       }
     };
 
-    fetchSwapEvents();
+    // Initial fetch
+    fetchSwapEvents(false);
+
+    // Set up polling every 5 seconds (background, no loading state)
+    pollInterval = setInterval(() => {
+      if (isMounted) {
+        fetchSwapEvents(true); // Background poll
+      }
+    }, 5000);
+
+    // Cleanup
+    return () => {
+      isMounted = false;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
   }, [poolAddress, supabaseUrl, supabaseKey, fromTokenAddr, toTokenAddr]);
 
 

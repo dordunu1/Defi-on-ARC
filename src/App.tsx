@@ -12,6 +12,7 @@ import Pools from './components/Pools';
 import CreatePool from './components/CreatePool';
 import MaintenancePage from './components/MaintenancePage';
 import XFollowFAB from './components/XFollowFAB';
+import DiscordWidget from './components/DiscordWidget';
 import ChangelogDocsWrapper from './components/ChangelogDocsWrapper';
 import { Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
@@ -93,7 +94,8 @@ function AppContent() {
             onClose={() => setIsBridgeModalOpen(false)}
           />
 
-          {/* X Follow FAB */}
+          {/* Social Links */}
+          <DiscordWidget />
           <XFollowFAB />
           
           {/* Changelog and Docs */}

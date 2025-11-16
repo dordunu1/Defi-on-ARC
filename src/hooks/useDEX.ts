@@ -757,7 +757,7 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     functionName: 'reserveB',
     query: { enabled: !!poolAddress },
   });
-  
+
   // CRITICAL: Read pool's actual tokenA and tokenB to match reserves correctly
   const { data: poolTokenA } = useReadContract({
     address: poolAddress || undefined,

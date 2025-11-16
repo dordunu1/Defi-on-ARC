@@ -189,16 +189,16 @@ export function usePriceHistory(
           }
 
           // Format date for TradingView
-          // For hourly data, use Unix timestamp (seconds)
-          // For daily/weekly/monthly, use YYYY-MM-DD format
+          // For 1H and 1D, use Unix timestamp (seconds) for granular data
+          // For 1W and 1M, use YYYY-MM-DD format for daily aggregation
           const date = new Date(item.timestamp);
           let timeValue: string | number;
           
-          if (timeRange === '1H') {
-            // Use Unix timestamp in seconds for intraday data
+          if (timeRange === '1H' || timeRange === '1D') {
+            // Use Unix timestamp in seconds for intraday and daily data (allows hourly granularity)
             timeValue = Math.floor(date.getTime() / 1000);
           } else {
-            // Use date string for daily data
+            // Use date string for weekly/monthly data (daily aggregation)
             timeValue = date.toISOString().split('T')[0];
           }
 

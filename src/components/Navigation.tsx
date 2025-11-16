@@ -48,23 +48,23 @@ export default function Navigation() {
               >
                 {({ isActive }: NavLinkRenderProps) => (
                   <>
-                    {/* Active background */}
-                    {isActive && (
-                      <motion.div
-                        className="absolute inset-0 bg-orange-500 rounded-xl"
-                        layoutId="activeTab"
-                        initial={false}
-                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                      />
-                    )}
-                    
-                    {/* Hover background */}
-                    {!isActive && (
-                      <div className="absolute inset-0 bg-gray-100/50 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
-                    )}
-                    
-                    <Icon className={`w-4 h-4 md:w-5 md:h-5 relative z-10 ${isActive ? 'text-white' : 'text-gray-600'}`} />
-                    <span className="relative z-10 hidden sm:inline">{tab.label}</span>
+                {/* Active background */}
+                {isActive && (
+                  <motion.div
+                    className="absolute inset-0 bg-orange-500 rounded-xl"
+                    layoutId="activeTab"
+                    initial={false}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+                
+                {/* Hover background */}
+                {!isActive && (
+                  <div className="absolute inset-0 bg-gray-100/50 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
+                )}
+                
+                <Icon className={`w-4 h-4 md:w-5 md:h-5 relative z-10 ${isActive ? 'text-white' : 'text-gray-600'}`} />
+                <span className="relative z-10 hidden sm:inline">{tab.label}</span>
                   </>
                 )}
               </NavLink>

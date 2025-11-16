@@ -11,6 +11,21 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2025-11-15',
+    version: 'v2.1.0',
+    changes: [
+      'Enhanced PriceChart with TradingView-like styling and professional appearance',
+      'Added 24-hour volume and percentage change display to price charts',
+      'Implemented real-time updates for 24h volume and swap history with 5-second background polling',
+      'Fixed percentage change calculation to accurately reflect price movements across all timeframes (1H, 1D, 1W, 1M)',
+      'Added USD sign ($) to price display on charts',
+      'Fixed AddLiquidityModal - success message now only appears after liquidity transaction is confirmed',
+      'Fixed RemoveLiquidityModal - error close button now properly closes both progress and main modals',
+      'Fixed CreatePool - correctly checks pool address existence in factory to prevent false "Pool exists" errors',
+      'Improved transaction flow management for multi-step liquidity operations',
+    ],
+  },
+  {
     date: '2025-11-13',
     version: 'v2.0.0',
     changes: [

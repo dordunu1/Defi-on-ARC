@@ -275,15 +275,15 @@ export default function RemoveLiquidityModal({
           }}
         >
           {/* Close Button */}
-          {!isPending && !isConfirming && (
-            <button
-              onClick={onClose}
+            {!isPending && !isConfirming && (
+              <button
+                onClick={onClose}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
               aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
 
           {/* Header */}
           <motion.h3
@@ -541,25 +541,25 @@ export default function RemoveLiquidityModal({
                 }}
               >
                 {/* Close Button */}
-                {!isPending && !isConfirming && !removalSuccess && (
-                  <button
+                  {!isPending && !isConfirming && !removalSuccess && (
+                    <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowProgressModal(false);
-                      setErrorMessage(null);
+                        setShowProgressModal(false);
+                        setErrorMessage(null);
                       setRemovalSuccess(false);
                       setLpAmount('');
                       // Close the main modal as well
                       setTimeout(() => {
                         onClose();
                       }, 100);
-                    }}
+                      }}
                     className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
                     aria-label="Close"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
 
                 {/* Header */}
                 <motion.h3
@@ -588,7 +588,7 @@ export default function RemoveLiquidityModal({
                   >
                     <div className="flex items-center gap-4">
                       <div className="relative flex-shrink-0">
-                        {(isPending || isConfirming) ? (
+                      {(isPending || isConfirming) ? (
                           <motion.div
                             className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                             style={{
@@ -601,7 +601,7 @@ export default function RemoveLiquidityModal({
                           >
                             <Loader2 className="w-6 h-6 text-white animate-spin" />
                           </motion.div>
-                        ) : (removalSuccess || (isSuccess && !isPending && !isConfirming)) ? (
+                      ) : (removalSuccess || (isSuccess && !isPending && !isConfirming)) ? (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -618,7 +618,7 @@ export default function RemoveLiquidityModal({
                           >
                             <CheckCircle2 className="w-6 h-6 text-white" />
                           </motion.div>
-                        ) : (
+                      ) : (
                           <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                             style={{
                               boxShadow: `
@@ -629,27 +629,27 @@ export default function RemoveLiquidityModal({
                           >
                             <div className="w-6 h-6 rounded-full bg-white" />
                           </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-sm ${
-                          isPending || isConfirming
-                            ? 'text-orange-600'
-                            : (removalSuccess || (isSuccess && !isPending && !isConfirming))
-                            ? 'text-green-600'
-                            : 'text-gray-500'
-                        }`}>
-                          Removing Liquidity
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {isPending || isConfirming
-                            ? 'Confirm in wallet...'
-                            : (removalSuccess || (isSuccess && !isPending && !isConfirming))
-                            ? 'Success'
-                            : 'Pending'}
-                        </p>
-                      </div>
+                      )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm ${
+                        isPending || isConfirming
+                          ? 'text-orange-600'
+                          : (removalSuccess || (isSuccess && !isPending && !isConfirming))
+                          ? 'text-green-600'
+                          : 'text-gray-500'
+                      }`}>
+                        Removing Liquidity
+                      </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                        {isPending || isConfirming
+                            ? 'Confirm in wallet...'
+                          : (removalSuccess || (isSuccess && !isPending && !isConfirming))
+                            ? 'Success'
+                          : 'Pending'}
+                      </p>
+                    </div>
+                  </div>
                   </motion.div>
 
                   {/* Success Message */}

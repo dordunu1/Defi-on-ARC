@@ -35,8 +35,15 @@ export default function ActivityTab() {
       return;
     }
 
-    const fetchSwapEvents = async () => {
+    let isMounted = true;
+    let pollInterval: NodeJS.Timeout | null = null;
+    let lastTxHash: string | null = null; // Track last tx hash to detect new events
+
+    const fetchSwapEvents = async (isBackgroundPoll = false) => {
+      // Only show loading on initial load, not on background polls
+      if (!isBackgroundPoll) {
       setIsLoading(true);
+      }
       try {
         // Query swap events directly by sender_address - no RPC calls needed!
         const addressLower = address.toLowerCase();
@@ -52,16 +59,50 @@ export default function ActivityTab() {
 
         if (response.ok) {
           const events = await response.json();
+          
+          if (isMounted) {
+            // Only update if we have new events (check by comparing first tx hash)
+            if (events.length > 0) {
+              const currentFirstTxHash = events[0].tx_hash;
+              // If this is a background poll and we have the same first tx, no new events
+              if (isBackgroundPoll && lastTxHash === currentFirstTxHash) {
+                // No new events, don't update state (prevents refresh)
+                return;
+              }
+              lastTxHash = currentFirstTxHash;
+            }
+            
             setSwapEvents(events);
+          }
         }
       } catch (error) {
+        if (!isBackgroundPoll) {
         console.error('Error fetching swap events:', error);
+        }
       } finally {
+        if (isMounted && !isBackgroundPoll) {
         setIsLoading(false);
+      }
       }
     };
 
-    fetchSwapEvents();
+    // Initial fetch
+    fetchSwapEvents(false);
+
+    // Set up polling every 5 seconds (background, no loading state)
+    pollInterval = setInterval(() => {
+      if (isMounted) {
+        fetchSwapEvents(true); // Background poll
+      }
+    }, 5000);
+
+    // Cleanup
+    return () => {
+      isMounted = false;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
   }, [isOpen, isConnected, isArcTestnet, address, supabaseUrl, supabaseKey]);
 
   // Get token symbol from address

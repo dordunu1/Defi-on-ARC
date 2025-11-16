@@ -158,7 +158,7 @@ export default function Pools() {
 
       setPools(poolsList);
       setIsLoading(false);
-    } catch (error) {
+        } catch (error) {
       console.error('Error fetching pools:', error);
       setIsLoading(false);
     }
@@ -314,8 +314,8 @@ export default function Pools() {
   useEffect(() => {
     if (!isArcTestnet || !supabaseUrl || !supabaseKey) {
       setIsLoadingMetrics(false);
-      return;
-    }
+        return;
+      }
 
     const fetchMetricsFast = async () => {
       setIsLoadingMetrics(true);
@@ -370,15 +370,15 @@ export default function Pools() {
         const usdcLower = USDC_ADDRESS.toLowerCase();
         
         // Pre-calculate prices for all unique tokens (needed for token-to-token swaps)
-        const tokenPrices = new Map<string, number>();
-        const uniqueTokens = new Set<string>();
-        
-        // Collect all unique tokens
+      const tokenPrices = new Map<string, number>();
+      const uniqueTokens = new Set<string>();
+      
+      // Collect all unique tokens
         for (const event of allSwapEvents) {
           if (event.token_in) uniqueTokens.add(event.token_in.toLowerCase());
           if (event.token_out) uniqueTokens.add(event.token_out.toLowerCase());
-        }
-        
+      }
+
         // Pre-calculate prices for all tokens (if pools are loaded)
         if (pools.length > 0 && publicClient) {
           const pricePromises = Array.from(uniqueTokens).map(async (tokenAddr) => {
@@ -416,19 +416,19 @@ export default function Pools() {
             // Case 2: Token-to-token swap (no USDC) - calculate USD value using token prices
             const tokenInDecimals = Object.entries(TOKENS).find(([_, info]) => 
               info.address.toLowerCase() === tokenInLower
-            )?.[1]?.decimals || 18;
-            
+          )?.[1]?.decimals || 18;
+
             const tokenOutDecimals = Object.entries(TOKENS).find(([_, info]) => 
               info.address.toLowerCase() === tokenOutLower
-            )?.[1]?.decimals || 18;
-            
+          )?.[1]?.decimals || 18;
+
             const amountIn = Number(event.amount_in) / Math.pow(10, tokenInDecimals);
             const amountOut = Number(event.amount_out) / Math.pow(10, tokenOutDecimals);
-            
+
             // Get prices (should be pre-calculated)
             const tokenInPrice = tokenPrices.get(tokenInLower) || 0;
             const tokenOutPrice = tokenPrices.get(tokenOutLower) || 0;
-            
+
             // Use whichever price is available and non-zero
             if (tokenInPrice > 0) {
               volumeUSD = amountIn * tokenInPrice;
@@ -465,7 +465,7 @@ export default function Pools() {
         setDailyMetricsMap(dailyMap);
         
         setIsLoadingMetrics(false);
-      } catch (error) {
+        } catch (error) {
         setIsLoadingMetrics(false);
       }
     };

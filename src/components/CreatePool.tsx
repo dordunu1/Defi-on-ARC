@@ -358,24 +358,56 @@ export default function CreatePool() {
     query: { enabled: !!isValidB },
   });
 
-  // Check if pool exists
+  // Sort tokens by address (factory stores pools with lower address first)
+  const sortedTokens = useMemo<[Address, Address] | null>(() => {
+    if (!isValidA || !isValidB || !tokenA || !tokenB) return null;
+    const tokenAAddr = (tokenA as string).toLowerCase();
+    const tokenBAddr = (tokenB as string).toLowerCase();
+    return tokenAAddr < tokenBAddr 
+      ? [tokenA as Address, tokenB as Address]
+      : [tokenB as Address, tokenA as Address];
+  }, [isValidA, isValidB, tokenA, tokenB]);
+
+  // Check if pool exists - use sorted tokens
   const { data: existingPool } = useReadContract({
     address: DEX_CONFIG.FACTORY_ADDRESS as Address,
     abi: FACTORY_ABI,
     functionName: 'getPool',
-    args: isValidA && isValidB
-      ? [tokenA as Address, tokenB as Address] 
-      : undefined,
-    query: { enabled: !!(isValidA && isValidB) },
+    args: sortedTokens ? sortedTokens : undefined,
+    query: { enabled: !!(isValidA && isValidB && sortedTokens) },
   });
-
-  const poolExists = existingPool && existingPool !== '0x0000000000000000000000000000000000000000';
   
-  // Get pool reserves if pool exists
+  // Get pool reserves (always call hook, but it will return empty if pool doesn't exist)
   const poolReserves = usePoolReserves(
     isValidA ? (tokenA as Address) : '0x0',
     isValidB ? (tokenB as Address) : '0x0'
   );
+
+  // Check if pool address exists in factory (determines if we can call createPool)
+  // The contract will reject createPool if a pool address already exists
+  const poolAddressExists = useMemo(() => {
+    return existingPool && existingPool !== '0x0000000000000000000000000000000000000000';
+  }, [existingPool]);
+
+  // Check if pool has actual liquidity (for UI display and price calculation)
+  // A pool can exist in factory but have zero reserves if all liquidity was removed
+  const poolHasLiquidity = useMemo(() => {
+    if (!poolAddressExists) return false;
+    
+    // Check if pool actually has reserves (has liquidity)
+    if (poolReserves.reserveA !== undefined && poolReserves.reserveB !== undefined) {
+      const reserveA = parseFloat(poolReserves.reserveA || '0');
+      const reserveB = parseFloat(poolReserves.reserveB || '0');
+      return reserveA > 0 && reserveB > 0;
+    }
+    
+    // If reserves haven't loaded yet, assume it might have liquidity
+    // This will be updated when reserves load
+    return true;
+  }, [poolAddressExists, poolReserves.reserveA, poolReserves.reserveB]);
+
+  // For UI: "pool exists" means it has liquidity (for display purposes)
+  const poolExists = poolHasLiquidity;
 
   // Calculate current price from reserves (for existing pools)
   const currentPrice = useMemo(() => {
@@ -530,14 +562,15 @@ export default function CreatePool() {
     setApprovalStep('none');
 
     try {
-      // If pool doesn't exist, create it first
-      if (!poolExists) {
+      // Only try to create pool if factory doesn't have a pool address for this pair
+      // The contract will reject createPool if pool address already exists (even with zero liquidity)
+      if (!poolAddressExists) {
         setApprovalStep('adding'); // Will handle pool creation
         writeContract({
           address: DEX_CONFIG.FACTORY_ADDRESS as Address,
           abi: FACTORY_ABI,
           functionName: 'createPool',
-          args: [tokenA as Address, tokenB as Address],
+          args: sortedTokens || [tokenA as Address, tokenB as Address],
         });
       } else {
         // Pool exists, try to add liquidity (this will throw if approvals needed)
@@ -817,10 +850,12 @@ export default function CreatePool() {
   // Auto-add liquidity after pool is created - IMPROVED FLOW
   useEffect(() => {
     // Only trigger once after pool is created
+    // poolCreated means we just successfully created a pool (poolAddressExists is now true)
+    // But poolHasLiquidity is still false because we haven't added liquidity yet
     if (
       poolCreated && 
       !hasStartedPostCreationFlow && // Prevent duplicate triggers
-      !poolExists && // Only for new pools
+      !poolHasLiquidity && // Only auto-add if pool doesn't have liquidity yet
       amountA && 
       amountB && 
       parseFloat(amountA) > 0 && 
@@ -955,7 +990,7 @@ export default function CreatePool() {
         }
       }, 2000); // Wait 2 seconds for pool to be fully ready
     }
-  }, [poolCreated, hasStartedPostCreationFlow, poolExists, amountA, amountB, tokenASymbolKey, tokenBSymbolKey, addLiquidity, approveToken, showProgressModal, poolReserves.poolAddress, existingPool, publicClient, tokenA, tokenB, address, getPoolAddress]);
+  }, [poolCreated, hasStartedPostCreationFlow, poolHasLiquidity, amountA, amountB, tokenASymbolKey, tokenBSymbolKey, addLiquidity, approveToken, showProgressModal, poolReserves.poolAddress, existingPool, publicClient, tokenA, tokenB, address, getPoolAddress]);
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4">
@@ -1069,9 +1104,9 @@ export default function CreatePool() {
                           />
                         )}
                         <div className="flex flex-col items-start">
-                          <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-gray-900">
                             {tokenA && isValidA ? getTokenDisplay(tokenA).symbol : 'Select token'}
-                          </span>
+                        </span>
                           {tokenA && isValidA && getTokenDisplay(tokenA).name && (
                             <span className="text-xs text-gray-500">{getTokenDisplay(tokenA).name}</span>
                           )}
@@ -1121,14 +1156,14 @@ export default function CreatePool() {
                               <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
                               {AVAILABLE_TOKENS.map((tokenSymbol) => (
                                 <TokenItem
-                                  key={tokenSymbol}
+                                key={tokenSymbol}
                                   token={tokenSymbol}
                                   isSelected={tokenA === TOKENS[tokenSymbol].address}
                                   onSelect={() => selectToken(tokenSymbol, 'A')}
                                   type="A"
                                 />
                               ))}
-                            </div>
+                                </div>
                             
                             {/* Custom Tokens */}
                             {Array.from(customTokens.values()).length > 0 && (
@@ -1206,9 +1241,9 @@ export default function CreatePool() {
                           />
                         )}
                         <div className="flex flex-col items-start">
-                          <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-gray-900">
                             {tokenB && isValidB ? getTokenDisplay(tokenB).symbol : 'USDC'}
-                          </span>
+                        </span>
                           {tokenB && isValidB && getTokenDisplay(tokenB).name && (
                             <span className="text-xs text-gray-500">{getTokenDisplay(tokenB).name}</span>
                           )}
@@ -1258,14 +1293,14 @@ export default function CreatePool() {
                               <p className="text-xs font-medium text-gray-500 px-2 py-1 mb-1">Popular Tokens</p>
                               {AVAILABLE_TOKENS.map((tokenSymbol) => (
                                 <TokenItem
-                                  key={tokenSymbol}
+                                key={tokenSymbol}
                                   token={tokenSymbol}
                                   isSelected={tokenB === TOKENS[tokenSymbol].address}
                                   onSelect={() => selectToken(tokenSymbol, 'B')}
                                   type="B"
                                 />
                               ))}
-                            </div>
+                                </div>
                             
                             {/* Custom Tokens */}
                             {Array.from(customTokens.values()).length > 0 && (
@@ -1628,28 +1663,28 @@ export default function CreatePool() {
                 }}
               >
                 {/* Close Button */}
-                {(liquiditySuccess || 
-                  (transactionSuccess && approvalStep === 'adding' && !isAddingLiquidity && !isConfirmingLiquidity) ||
-                  (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && !poolCreated && approvalStep === 'none')) && (
-                  <button
-                    onClick={() => {
-                      setShowProgressModal(false);
-                      setApprovalStep('none');
-                      setLiquiditySuccess(false);
-                      setErrorMessage(null);
-                      setHasStartedPostCreationFlow(false);
-                      setCompletedApprovalStep('none');
+                  {(liquiditySuccess || 
+                    (transactionSuccess && approvalStep === 'adding' && !isAddingLiquidity && !isConfirmingLiquidity) ||
+                    (!isAddingLiquidity && !isConfirmingLiquidity && !isCreating && !isConfirmingCreate && !poolCreated && approvalStep === 'none')) && (
+                    <button
+                      onClick={() => {
+                        setShowProgressModal(false);
+                        setApprovalStep('none');
+                        setLiquiditySuccess(false);
+                        setErrorMessage(null);
+                        setHasStartedPostCreationFlow(false);
+                        setCompletedApprovalStep('none');
                       setCompletedSteps(new Set());
-                      setAmountA('');
-                      setAmountB('');
+                        setAmountA('');
+                        setAmountB('');
                       setModalManuallyClosed(true);
-                    }}
+                      }}
                     className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
-                    aria-label="Close"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
+                      aria-label="Close"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
 
                 {/* Header */}
                 <motion.h3
@@ -1680,7 +1715,7 @@ export default function CreatePool() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="relative flex-shrink-0">
-                          {(isCreating || isConfirmingCreate) ? (
+                        {(isCreating || isConfirmingCreate) ? (
                             <motion.div
                               className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                               style={{
@@ -1710,7 +1745,7 @@ export default function CreatePool() {
                             >
                               <CheckCircle2 className="w-6 h-6 text-white" />
                             </motion.div>
-                          ) : (
+                        ) : (
                             <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                               style={{
                                 boxShadow: `
@@ -1721,27 +1756,27 @@ export default function CreatePool() {
                             >
                               <div className="w-6 h-6 rounded-full bg-white" />
                             </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm ${
-                            isCreating || isConfirmingCreate
-                              ? 'text-orange-600'
-                              : completedSteps.has('createPool') || poolCreated
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Create Pool
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {(isCreating || isConfirmingCreate) 
-                              ? 'Confirm in wallet...' 
-                              : completedSteps.has('createPool') || poolCreated
-                              ? 'Completed'
-                              : 'Pending'}
-                          </p>
-                        </div>
+                        )}
                       </div>
+                      <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                          isCreating || isConfirmingCreate
+                            ? 'text-orange-600'
+                              : completedSteps.has('createPool') || poolCreated
+                            ? 'text-green-600'
+                            : 'text-gray-500'
+                        }`}>
+                          Create Pool
+                        </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                          {(isCreating || isConfirmingCreate) 
+                            ? 'Confirm in wallet...' 
+                              : completedSteps.has('createPool') || poolCreated
+                            ? 'Completed'
+                            : 'Pending'}
+                        </p>
+                      </div>
+                    </div>
                     </motion.div>
                   )}
 
@@ -1762,7 +1797,7 @@ export default function CreatePool() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="relative flex-shrink-0">
-                          {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) ? (
+                        {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) ? (
                             <motion.div
                               className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                               style={{
@@ -1792,7 +1827,7 @@ export default function CreatePool() {
                             >
                               <CheckCircle2 className="w-6 h-6 text-white" />
                             </motion.div>
-                          ) : (
+                        ) : (
                             <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                               style={{
                                 boxShadow: `
@@ -1803,27 +1838,27 @@ export default function CreatePool() {
                             >
                               <div className="w-6 h-6 rounded-full bg-white" />
                             </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm ${
-                            approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity)
-                              ? 'text-orange-600'
-                              : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Approve {symbolA || 'Token A'}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) 
-                              ? 'Confirm in wallet...' 
-                              : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
-                              ? 'Completed'
-                              : 'Pending'}
-                          </p>
-                        </div>
+                        )}
                       </div>
+                      <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                          approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity)
+                            ? 'text-orange-600'
+                              : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                            ? 'text-green-600'
+                            : 'text-gray-500'
+                        }`}>
+                          Approve {symbolA || 'Token A'}
+                        </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                          {approvalStep === 'approvingA' && (isAddingLiquidity || isConfirmingLiquidity) 
+                            ? 'Confirm in wallet...' 
+                              : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                            ? 'Completed'
+                            : 'Pending'}
+                        </p>
+                      </div>
+                    </div>
                     </motion.div>
                   )}
 
@@ -1844,7 +1879,7 @@ export default function CreatePool() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="relative flex-shrink-0">
-                          {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) ? (
+                        {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) ? (
                             <motion.div
                               className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                               style={{
@@ -1874,7 +1909,7 @@ export default function CreatePool() {
                             >
                               <CheckCircle2 className="w-6 h-6 text-white" />
                             </motion.div>
-                          ) : (
+                        ) : (
                             <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                               style={{
                                 boxShadow: `
@@ -1885,27 +1920,27 @@ export default function CreatePool() {
                             >
                               <div className="w-6 h-6 rounded-full bg-white" />
                             </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm ${
-                            approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate)
-                              ? 'text-orange-600'
-                              : completedSteps.has('approvingB') || approvalStep === 'adding'
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Approve {symbolB || 'Token B'}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) 
-                              ? 'Confirm in wallet...' 
-                              : completedSteps.has('approvingB') || approvalStep === 'adding'
-                              ? 'Completed'
-                              : 'Pending'}
-                          </p>
-                        </div>
+                        )}
                       </div>
+                      <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                          approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate)
+                            ? 'text-orange-600'
+                              : completedSteps.has('approvingB') || approvalStep === 'adding'
+                            ? 'text-green-600'
+                            : 'text-gray-500'
+                        }`}>
+                          Approve {symbolB || 'Token B'}
+                        </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                          {approvalStep === 'approvingB' && (isAddingLiquidity || isConfirmingLiquidity || isCreating || isConfirmingCreate) 
+                            ? 'Confirm in wallet...' 
+                              : completedSteps.has('approvingB') || approvalStep === 'adding'
+                            ? 'Completed'
+                            : 'Pending'}
+                        </p>
+                      </div>
+                    </div>
                     </motion.div>
                   )}
 
@@ -1926,7 +1961,7 @@ export default function CreatePool() {
                     >
                       <div className="flex items-center gap-4">
                         <div className="relative flex-shrink-0">
-                          {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) ? (
+                        {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) ? (
                             <motion.div
                               className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                               style={{
@@ -1956,7 +1991,7 @@ export default function CreatePool() {
                             >
                               <CheckCircle2 className="w-6 h-6 text-white" />
                             </motion.div>
-                          ) : (
+                        ) : (
                             <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                               style={{
                                 boxShadow: `
@@ -1967,27 +2002,27 @@ export default function CreatePool() {
                             >
                               <div className="w-6 h-6 rounded-full bg-white" />
                             </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm ${
-                            approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity)
-                              ? 'text-orange-600'
-                              : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding')
-                              ? 'text-green-600'
-                              : 'text-gray-500'
-                          }`}>
-                            Add Liquidity
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) 
-                              ? 'Confirm in wallet...' 
-                              : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding')
-                              ? 'Success'
-                              : 'Pending'}
-                          </p>
-                        </div>
+                        )}
                       </div>
+                      <div className="flex-1 min-w-0">
+                          <p className={`font-semibold text-sm ${
+                          approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity)
+                            ? 'text-orange-600'
+                              : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding')
+                            ? 'text-green-600'
+                            : 'text-gray-500'
+                        }`}>
+                          Add Liquidity
+                        </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                          {approvalStep === 'adding' && (isAddingLiquidity || isConfirmingLiquidity) 
+                            ? 'Confirm in wallet...' 
+                              : completedSteps.has('adding') || (transactionSuccess && approvalStep === 'adding')
+                            ? 'Success'
+                            : 'Pending'}
+                        </p>
+                      </div>
+                    </div>
                     </motion.div>
                   )}
 

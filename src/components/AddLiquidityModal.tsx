@@ -248,30 +248,30 @@ export default function AddLiquidityModal({
       // Mark this hash as completed to prevent duplicate success messages
       setCompletedLiquidityHash(hash);
       setCompletedSteps(prev => new Set(prev).add('adding')); // Mark adding liquidity as completed
-      setLiquiditySuccess(true);
+        setLiquiditySuccess(true);
       
       // Auto-close after showing success
-      setTimeout(() => {
-        // Only auto-close if user hasn't manually closed
-        if (showProgressModal && !modalManuallyClosed) {
-          setShowProgressModal(false);
+        setTimeout(() => {
+          // Only auto-close if user hasn't manually closed
+          if (showProgressModal && !modalManuallyClosed) {
+            setShowProgressModal(false);
           setModalManuallyClosed(true); // Mark as manually closed to prevent blank modal
-          setApprovalStep('none');
-          setLiquiditySuccess(false);
-          setCompletedApprovalStep('none');
+            setApprovalStep('none');
+            setLiquiditySuccess(false);
+            setCompletedApprovalStep('none');
           setCompletedLiquidityHash(null);
           setLiquidityTransactionHash(null);
           setLiquidityTransactionSubmitted(false);
           setLastTransactionType(null);
           setCompletedSteps(new Set());
-          // Reset and close after a delay
-          setTimeout(() => {
-            setAmountA('');
-            setAmountB('');
-            onClose();
+            // Reset and close after a delay
+            setTimeout(() => {
+              setAmountA('');
+              setAmountB('');
+              onClose();
           }, 100);
-        }
-      }, 2500);
+          }
+        }, 2500);
       
       // For approvals (approvingA or approvingB), DON'T show success - let auto-proceed handle it
       // The auto-proceed useEffect will take over and keep the modal open
@@ -606,15 +606,15 @@ export default function AddLiquidityModal({
           }}
         >
           {/* Close Button */}
-          {!isPending && !isConfirming && (
-            <button
-              onClick={onClose}
+            {!isPending && !isConfirming && (
+              <button
+                onClick={onClose}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
               aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
 
           {/* Header */}
           <motion.h3
@@ -961,10 +961,10 @@ export default function AddLiquidityModal({
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   exit={{ scale: 0.8, opacity: 0, y: 20 }}
                   transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-                  onClick={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
                   className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden min-h-[200px]"
-                  style={{
-                    boxShadow: `
+                style={{
+                  boxShadow: `
                       inset 0 1px 0 rgba(255, 255, 255, 0.9),
                       inset 0 -1px 0 rgba(0, 0, 0, 0.05),
                       0 0 30px rgba(251, 146, 60, 0.15),
@@ -972,37 +972,37 @@ export default function AddLiquidityModal({
                       0 10px 30px rgba(0, 0, 0, 0.1),
                       0 4px 8px rgba(0, 0, 0, 0.05)
                     `,
-                  }}
+                }}
                 >
                   {/* Close Button */}
-                  {(liquiditySuccess || 
+                    {(liquiditySuccess || 
                     (liquiditySuccess && completedLiquidityHash === hash && !isPending && !isConfirming) ||
-                    (!isPending && !isConfirming && approvalStep === 'none')) && (
-                    <button
-                      onClick={() => {
-                    setShowProgressModal(false);
-                    setApprovalStep('none');
-                    setLiquiditySuccess(false);
-                    setErrorMessage(null);
-                    setCompletedApprovalStep('none');
+                      (!isPending && !isConfirming && approvalStep === 'none')) && (
+                      <button
+                        onClick={() => {
+                          setShowProgressModal(false);
+                          setApprovalStep('none');
+                          setLiquiditySuccess(false);
+                          setErrorMessage(null);
+                          setCompletedApprovalStep('none');
                     setCompletedSteps(new Set());
                     setCompletedLiquidityHash(null);
                     setLiquidityTransactionHash(null);
                     setLiquidityTransactionSubmitted(false);
                     setLastTransactionType(null);
                     setModalManuallyClosed(true);
-                    setTimeout(() => {
-                      setAmountA('');
-                      setAmountB('');
-                      onClose();
-                    }, 300);
-                      }}
+                          setTimeout(() => {
+                            setAmountA('');
+                            setAmountB('');
+                            onClose();
+                          }, 300);
+                        }}
                       className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
-                      aria-label="Close"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
+                        aria-label="Close"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
 
                   {/* Header */}
                   <motion.h3
@@ -1033,7 +1033,7 @@ export default function AddLiquidityModal({
                       >
                         <div className="flex items-center gap-4">
                           <div className="relative flex-shrink-0">
-                            {approvalStep === 'approvingA' && (isPending || isConfirming) ? (
+                          {approvalStep === 'approvingA' && (isPending || isConfirming) ? (
                               <motion.div
                                 className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                                 style={{
@@ -1063,7 +1063,7 @@ export default function AddLiquidityModal({
                               >
                                 <CheckCircle2 className="w-6 h-6 text-white" />
                               </motion.div>
-                            ) : (
+                          ) : (
                               <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                                 style={{
                                   boxShadow: `
@@ -1074,27 +1074,27 @@ export default function AddLiquidityModal({
                               >
                                 <div className="w-6 h-6 rounded-full bg-white" />
                               </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-sm ${
-                              approvalStep === 'approvingA' && (isPending || isConfirming)
-                                ? 'text-orange-600'
-                                : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
-                                ? 'text-green-600'
-                                : 'text-gray-500'
-                            }`}>
-                              Approve {tokenASymbol}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {approvalStep === 'approvingA' && (isPending || isConfirming) 
-                                ? 'Confirm in wallet...' 
-                                : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
-                                ? 'Completed'
-                                : 'Pending'}
-                            </p>
-                          </div>
+                          )}
                         </div>
+                        <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm ${
+                            approvalStep === 'approvingA' && (isPending || isConfirming)
+                              ? 'text-orange-600'
+                                : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Approve {tokenASymbol}
+                          </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                            {approvalStep === 'approvingA' && (isPending || isConfirming) 
+                              ? 'Confirm in wallet...' 
+                                : completedSteps.has('approvingA') || approvalStep !== 'approvingA'
+                              ? 'Completed'
+                              : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
                       </motion.div>
                     )}
 
@@ -1116,7 +1116,7 @@ export default function AddLiquidityModal({
                       >
                         <div className="flex items-center gap-4">
                           <div className="relative flex-shrink-0">
-                            {approvalStep === 'approvingB' && (isPending || isConfirming) ? (
+                          {approvalStep === 'approvingB' && (isPending || isConfirming) ? (
                               <motion.div
                                 className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                                 style={{
@@ -1146,7 +1146,7 @@ export default function AddLiquidityModal({
                               >
                                 <CheckCircle2 className="w-6 h-6 text-white" />
                               </motion.div>
-                            ) : (
+                          ) : (
                               <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                                 style={{
                                   boxShadow: `
@@ -1157,27 +1157,27 @@ export default function AddLiquidityModal({
                               >
                                 <div className="w-6 h-6 rounded-full bg-white" />
                               </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-sm ${
-                              approvalStep === 'approvingB' && (isPending || isConfirming)
-                                ? 'text-orange-600'
-                                : completedSteps.has('approvingB') || approvalStep === 'adding'
-                                ? 'text-green-600'
-                                : 'text-gray-500'
-                            }`}>
-                              Approve {tokenBSymbol}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {approvalStep === 'approvingB' && (isPending || isConfirming) 
-                                ? 'Confirm in wallet...' 
-                                : completedSteps.has('approvingB') || approvalStep === 'adding'
-                                ? 'Completed'
-                                : 'Pending'}
-                            </p>
-                          </div>
+                          )}
                         </div>
+                        <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm ${
+                            approvalStep === 'approvingB' && (isPending || isConfirming)
+                              ? 'text-orange-600'
+                                : completedSteps.has('approvingB') || approvalStep === 'adding'
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Approve {tokenBSymbol}
+                          </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                            {approvalStep === 'approvingB' && (isPending || isConfirming) 
+                              ? 'Confirm in wallet...' 
+                                : completedSteps.has('approvingB') || approvalStep === 'adding'
+                              ? 'Completed'
+                              : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
                       </motion.div>
                     )}
 
@@ -1198,7 +1198,7 @@ export default function AddLiquidityModal({
                       >
                         <div className="flex items-center gap-4">
                           <div className="relative flex-shrink-0">
-                            {approvalStep === 'adding' && (isPending || isConfirming) ? (
+                          {approvalStep === 'adding' && (isPending || isConfirming) ? (
                               <motion.div
                                 className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                                 style={{
@@ -1228,7 +1228,7 @@ export default function AddLiquidityModal({
                               >
                                 <CheckCircle2 className="w-6 h-6 text-white" />
                               </motion.div>
-                            ) : (
+                          ) : (
                               <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                                 style={{
                                   boxShadow: `
@@ -1239,27 +1239,27 @@ export default function AddLiquidityModal({
                               >
                                 <div className="w-6 h-6 rounded-full bg-white" />
                               </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
                             <p className={`font-semibold text-sm ${
-                              approvalStep === 'adding' && (isPending || isConfirming)
-                                ? 'text-orange-600'
+                            approvalStep === 'adding' && (isPending || isConfirming)
+                              ? 'text-orange-600'
                                 : (completedSteps.has('adding') && liquidityTransactionHash === hash && !isPending && !isConfirming) || (liquiditySuccess && completedLiquidityHash === hash && liquidityTransactionHash === hash && !isPending && !isConfirming)
-                                ? 'text-green-600'
-                                : 'text-gray-500'
-                            }`}>
-                              Add Liquidity
-                            </p>
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                          }`}>
+                            Add Liquidity
+                          </p>
                             <p className="text-xs text-gray-500 mt-1">
                               {approvalStep === 'adding' && (isPending || isConfirming) 
-                                ? 'Confirm in wallet...' 
+                              ? 'Confirm in wallet...' 
                                 : (completedSteps.has('adding') && liquidityTransactionHash === hash && !isPending && !isConfirming) || (liquiditySuccess && completedLiquidityHash === hash && liquidityTransactionHash === hash && !isPending && !isConfirming)
-                                ? 'Success'
-                                : 'Pending'}
-                            </p>
-                          </div>
+                              ? 'Success'
+                              : 'Pending'}
+                          </p>
                         </div>
+                      </div>
                       </motion.div>
                     )}
 
