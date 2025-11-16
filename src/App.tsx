@@ -14,6 +14,7 @@ import MaintenancePage from './components/MaintenancePage';
 import XFollowFAB from './components/XFollowFAB';
 import DiscordWidget from './components/DiscordWidget';
 import ChangelogDocsWrapper from './components/ChangelogDocsWrapper';
+import { SwapEventsCacheProvider } from './contexts/SwapEventsCache';
 import { Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -111,9 +112,11 @@ function App() {
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
+          <SwapEventsCacheProvider>
+            <BrowserRouter>
+              <AppContent />
+            </BrowserRouter>
+          </SwapEventsCacheProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

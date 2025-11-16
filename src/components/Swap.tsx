@@ -626,6 +626,57 @@ export default function Swap() {
     setToAmount(tempAmount);
   };
 
+  // Calculate USD value of swap
+  const getSwapUSDValue = useMemo((): number => {
+    if (!fromAmount || parseFloat(fromAmount) <= 0) return 0;
+    
+    const fromTokenAddr = getTokenAddress(fromToken);
+    const toTokenAddr = getTokenAddress(toToken);
+    const usdcAddr = TOKENS.USDC.address.toLowerCase();
+    
+    // If swapping from USDC, USD value = fromAmount
+    if (fromTokenAddr?.toLowerCase() === usdcAddr) {
+      return parseFloat(fromAmount);
+    }
+    
+    // If swapping to USDC, USD value = toAmount (estimated)
+    if (toTokenAddr?.toLowerCase() === usdcAddr && toAmount && parseFloat(toAmount) > 0) {
+      return parseFloat(toAmount);
+    }
+    
+    // If neither is USDC, calculate USD value using pool reserves
+    // Since all pools involve USDC, we can calculate the USD value
+    if (poolReserves && poolReserves.reserveA && poolReserves.reserveB && 
+        poolReserves.reserveA !== '0' && poolReserves.reserveB !== '0') {
+      const fromTokenAddrLower = fromTokenAddr?.toLowerCase();
+      const poolTokenALower = poolTokenA?.toLowerCase();
+      const poolTokenBLower = poolTokenB?.toLowerCase();
+      
+      // Find which reserve is USDC
+      const reserveAIsUSDC = poolTokenALower === usdcAddr;
+      const reserveBIsUSDC = poolTokenBLower === usdcAddr;
+      
+      if (reserveAIsUSDC || reserveBIsUSDC) {
+        const usdcReserveStr = reserveAIsUSDC ? poolReserves.reserveA : poolReserves.reserveB;
+        const tokenReserveStr = reserveAIsUSDC ? poolReserves.reserveB : poolReserves.reserveA;
+        
+        // Reserves are already formatted strings, so parse them directly
+        const usdcAmount = parseFloat(usdcReserveStr);
+        const tokenAmount = parseFloat(tokenReserveStr);
+        
+        if (tokenAmount > 0 && usdcAmount > 0) {
+          // Calculate price: USDC per token
+          const pricePerToken = usdcAmount / tokenAmount;
+          // USD value = fromAmount * price
+          return parseFloat(fromAmount) * pricePerToken;
+        }
+      }
+    }
+    
+    // Fallback: use fromAmount (assume $1 per token)
+    return parseFloat(fromAmount);
+  }, [fromAmount, toAmount, fromToken, toToken, getTokenAddress, poolReserves, poolTokenA, poolTokenB, getTokenDecimals]);
+
   const handleSwapClick = async () => {
     // If not connected, let RainbowKit handle connection
     if (!isConnected) {
@@ -658,6 +709,14 @@ export default function Swap() {
       return;
     }
     
+    // Check minimum swap value ($5 USD)
+    const MIN_SWAP_USD = 5;
+    const swapUSDValue = getSwapUSDValue;
+    if (swapUSDValue < MIN_SWAP_USD) {
+      setErrorMessage(`Minimum swap amount is $${MIN_SWAP_USD} USD. Current value: $${swapUSDValue.toFixed(2)}`);
+      return;
+    }
+    
     // Check if we have a direct pool OR Router can handle it
     if (!poolAddress && (!DEX_CONFIG.ROUTER_ADDRESS || !estimatedOutput || estimatedOutput === '0')) {
       setErrorMessage('Pool not found. Please create the pool first or ensure Router is configured.');
@@ -672,6 +731,15 @@ export default function Swap() {
     if (!isConnected || !fromAmount || parseFloat(fromAmount) <= 0) return;
     if (!publicClient || !address) {
       setErrorMessage('Wallet not connected');
+      setShowReviewModal(false);
+      return;
+    }
+    
+    // Check minimum swap value ($5 USD)
+    const MIN_SWAP_USD = 5;
+    const swapUSDValue = getSwapUSDValue;
+    if (swapUSDValue < MIN_SWAP_USD) {
+      setErrorMessage(`Minimum swap amount is $${MIN_SWAP_USD} USD. Current value: $${swapUSDValue.toFixed(2)}`);
       setShowReviewModal(false);
       return;
     }

@@ -11,6 +11,18 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2025-11-16',
+    version: 'v2.2.0',
+    changes: [
+      'Added $5 USD minimum swap limit to prevent spam of tiny swap volumes (e.g., $0.002)',
+      'Implemented swap events caching system - swap history now loads instantly when switching pairs',
+      'Optimized swap history loading with background preloading of all pool events on site load',
+      'Added period filters (7d, 30d, 90d, All Time) for volume and fees metrics',
+      'Optimized volume and fees calculation using Supabase RPC functions for faster loading',
+      'Router address now displays as "Router" in swap activity instead of full address',
+    ],
+  },
+  {
     date: '2025-11-15',
     version: 'v2.1.0',
     changes: [

@@ -5,6 +5,7 @@ import { formatUnits, type Address, isAddress } from 'viem';
 import { TOKENS, type TokenSymbol } from '../hooks/useDEX';
 import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
+import { useSwapEventsCache } from '../contexts/SwapEventsCache';
 
 interface SwapEvent {
   tx_hash: string;
@@ -29,6 +30,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
   const [swapEvents, setSwapEvents] = useState<SwapEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const { getCachedEvents, isCached, updatePoolEvents, preloadPool } = useSwapEventsCache();
 
   // Supabase configuration
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -46,7 +48,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
   const fromTokenAddr = getTokenAddress(fromToken);
   const toTokenAddr = getTokenAddress(toToken);
 
-  // Fetch swap events for this pool
+  // Fetch swap events for this pool - OPTIMIZED with cache
   useEffect(() => {
     if (!poolAddress || !supabaseUrl || !supabaseKey || !fromTokenAddr || !toTokenAddr) {
       setSwapEvents([]);
@@ -55,118 +57,126 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
 
     let isMounted = true;
     let pollInterval: NodeJS.Timeout | null = null;
-    let lastTxHash: string | null = null; // Track last tx hash to detect new events
+    let lastTxHash: string | null = null;
 
-    const fetchSwapEvents = async (isBackgroundPoll = false) => {
-      // Only show loading on initial load, not on background polls
-      if (!isBackgroundPoll) {
-        setIsLoading(true);
+    // Fast fetch function for new events only (for polling)
+    const fetchNewEvents = async (): Promise<SwapEvent[]> => {
+      const poolAddrLower = poolAddress.toLowerCase();
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc&limit=100`,
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        return await response.json();
       }
-      try {
-        const poolAddrLower = poolAddress.toLowerCase();
-        let allEvents: SwapEvent[] = [];
-        let hasMore = true;
-        let rangeStart = 0;
-        const batchSize = 1000; // Fetch in batches of 1000
+      return [];
+    };
 
-        // Fetch all events using pagination with Range header
-        while (hasMore) {
-          const rangeEnd = rangeStart + batchSize - 1;
-          const response = await fetch(
-            `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc`,
-            {
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${supabaseKey}`,
-                'Range': `${rangeStart}-${rangeEnd}`,
-              },
-            }
-          );
+    const updateEvents = async (isBackgroundPoll = false) => {
+      // Use cache if available (instant load!)
+      if (isCached(poolAddress)) {
+        const cachedEvents = getCachedEvents(poolAddress);
+        if (isMounted) {
+          setSwapEvents(cachedEvents);
+          setIsLoading(false);
+        }
 
-          if (response.ok) {
-            const events = await response.json();
-            const contentRange = response.headers.get('content-range');
-            
-            if (events.length === 0) {
-              hasMore = false;
-            } else {
-              allEvents = [...allEvents, ...events];
+        // In background, check for new events and update cache
+        if (isBackgroundPoll) {
+          try {
+            const newEvents = await fetchNewEvents();
+            if (newEvents.length > 0) {
+              const currentFirstTxHash = cachedEvents[0]?.tx_hash;
+              const newFirstTxHash = newEvents[0]?.tx_hash;
               
-              // Check if we've fetched all events using Content-Range header
-              if (contentRange) {
-                const match = contentRange.match(/\d+-\d+\/(\d+)/);
-                if (match) {
-                  const total = parseInt(match[1]);
-                  if (allEvents.length >= total) {
-                    hasMore = false;
-                  } else {
-                    rangeStart += batchSize;
+              // If we have new events, fetch all and update cache
+              if (currentFirstTxHash !== newFirstTxHash) {
+                // Fetch all events (cache might be stale)
+                const poolAddrLower = poolAddress.toLowerCase();
+                let allEvents: SwapEvent[] = [];
+                let rangeStart = 0;
+                const batchSize = 1000;
+
+                while (true) {
+                  const rangeEnd = rangeStart + batchSize - 1;
+                  const response = await fetch(
+                    `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc`,
+                    {
+                      headers: {
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${supabaseKey}`,
+                        'Range': `${rangeStart}-${rangeEnd}`,
+                      },
+                    }
+                  );
+
+                  if (!response.ok) break;
+                  const events = await response.json();
+                  if (events.length === 0) break;
+
+                  allEvents = [...allEvents, ...events];
+
+                  const contentRange = response.headers.get('content-range');
+                  if (contentRange) {
+                    const match = contentRange.match(/\d+-\d+\/(\d+)/);
+                    if (match && allEvents.length >= parseInt(match[1])) break;
                   }
-                } else {
-                  // Fallback: if we got fewer events than batchSize, we've reached the end
-                  if (events.length < batchSize) {
-                    hasMore = false;
-                  } else {
-                    rangeStart += batchSize;
-                  }
-                }
-              } else {
-                // Fallback: if we got fewer events than batchSize, we've reached the end
-                if (events.length < batchSize) {
-                  hasMore = false;
-                } else {
+                  if (events.length < batchSize) break;
                   rangeStart += batchSize;
+                }
+
+                if (isMounted) {
+                  updatePoolEvents(poolAddress, allEvents);
+                  setSwapEvents(allEvents);
                 }
               }
             }
-          } else {
-            hasMore = false;
+          } catch (error) {
+            // Silent fail for background polls
           }
         }
+        return;
+      }
 
+      // Cache miss - fetch all events
+      if (!isBackgroundPoll) {
+        setIsLoading(true);
+      }
+
+      // Preload if not cached
+      if (!isCached(poolAddress)) {
+        await preloadPool(poolAddress);
+        const cachedEvents = getCachedEvents(poolAddress);
         if (isMounted) {
-          // Only update if we have new events (check by comparing first tx hash)
-          if (allEvents.length > 0) {
-            const currentFirstTxHash = allEvents[0].tx_hash;
-            // If this is a background poll and we have the same first tx, no new events
-            if (isBackgroundPoll && lastTxHash === currentFirstTxHash) {
-              // No new events, don't update state (prevents refresh)
-              return;
-            }
-            lastTxHash = currentFirstTxHash;
-          }
-          
-          setSwapEvents(allEvents);
-        }
-      } catch (error) {
-        if (!isBackgroundPoll) {
-          console.error('Error fetching swap events:', error);
-        }
-      } finally {
-        if (isMounted && !isBackgroundPoll) {
+          setSwapEvents(cachedEvents);
           setIsLoading(false);
         }
       }
     };
 
-    // Initial fetch
-    fetchSwapEvents(false);
+    // Initial load
+    updateEvents(false);
 
-    // Set up polling every 5 seconds (background, no loading state)
+    // Poll for new events every 5 seconds
     pollInterval = setInterval(() => {
       if (isMounted) {
-        fetchSwapEvents(true); // Background poll
+        updateEvents(true);
       }
     }, 5000);
 
-    // Cleanup
     return () => {
       isMounted = false;
       if (pollInterval) {
         clearInterval(pollInterval);
       }
     };
-  }, [poolAddress, supabaseUrl, supabaseKey, fromTokenAddr, toTokenAddr]);
+  }, [poolAddress, supabaseUrl, supabaseKey, fromTokenAddr, toTokenAddr, getCachedEvents, isCached, updatePoolEvents, preloadPool]);
 
 
   // Pagination calculations
@@ -258,12 +268,19 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
   // Get trader address from swap event
   const getTraderAddress = (event: SwapEvent): string => {
     if (event.sender_address) {
-      const addr = event.sender_address;
-      // Truncate address for display
-      if (addr.startsWith('0x') && addr.length === 42) {
-        return addr.slice(0, 6) + '...' + addr.slice(-4);
+      const addr = event.sender_address.toLowerCase();
+      const routerAddr = DEX_CONFIG.ROUTER_ADDRESS.toLowerCase();
+      
+      // Check if it's the router address
+      if (addr === routerAddr) {
+        return 'Router';
       }
-      return addr;
+      
+      // Truncate address for display
+      if (event.sender_address.startsWith('0x') && event.sender_address.length === 42) {
+        return event.sender_address.slice(0, 6) + '...' + event.sender_address.slice(-4);
+      }
+      return event.sender_address;
     }
     // Fallback to truncated tx hash if no sender_address
     return event.tx_hash.slice(0, 6) + '...' + event.tx_hash.slice(-4);

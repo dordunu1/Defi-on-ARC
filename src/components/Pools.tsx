@@ -90,6 +90,7 @@ export default function Pools() {
   const [tvlHistory, setTvlHistory] = useState<TVLDataPoint[]>([]);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(true);
   const [dailyMetricsMap, setDailyMetricsMap] = useState<Map<string, { volume: number; fees: number }>>(new Map());
+  const [volumeFeesPeriod, setVolumeFeesPeriod] = useState<'all' | 7 | 30 | 90>('all'); // Filter for volume/fees period
   const isArcTestnet = chainId === 5042002;
 
   // Supabase configuration
@@ -309,8 +310,8 @@ export default function Pools() {
     return 0;
   }, [publicClient]);
 
-  // Fetch metrics from Supabase immediately on load - calculate from swap_events directly
-  // Uses pagination to fetch ALL events, not just the first batch
+  // Fetch metrics from Supabase - OPTIMIZED: Only fetch USDC swaps (all swaps involve USDC)
+  // Much faster: Filtered query + simple USDC amount sum (no price calculations needed)
   useEffect(() => {
     if (!isArcTestnet || !supabaseUrl || !supabaseKey) {
       setIsLoadingMetrics(false);
@@ -321,164 +322,123 @@ export default function Pools() {
       setIsLoadingMetrics(true);
       
       try {
-        // Fetch ALL swap events using pagination (Supabase has a max limit per request)
-        // We'll fetch in batches of 1000 until we get all events
-        let allSwapEvents: any[] = [];
-        let offset = 0;
-        const limit = 1000; // Supabase PostgREST max limit per request
-        let hasMore = true;
+        const usdcAddress = USDC_ADDRESS.toLowerCase();
+      
+        // SCALABLE: Use Supabase RPC functions to aggregate server-side
+        // This fetches only aggregated results, not 30k+ individual events
+        let totalVolume = 0;
+        let totalFees = 0;
         
-        while (hasMore) {
-          const swapEventsResponse = await fetch(
-            `${supabaseUrl}/rest/v1/swap_events?select=token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.asc&limit=${limit}&offset=${offset}`,
+        // Fetch volume and fees based on selected period
+        if (volumeFeesPeriod === 'all') {
+          // Fetch all-time totals
+          const totalMetricsResponse = await fetch(
+            `${supabaseUrl}/rest/v1/rpc/get_total_volume_fees`,
             {
+              method: 'POST',
               headers: {
                 'apikey': supabaseKey,
                 'Authorization': `Bearer ${supabaseKey}`,
-                'Prefer': 'count=exact',
+                'Content-Type': 'application/json',
               },
+              body: JSON.stringify({ usdc_address: usdcAddress }),
             }
           );
 
-          if (!swapEventsResponse.ok) {
-            break;
-          }
-
-          const swapEvents = await swapEventsResponse.json();
-          
-          if (swapEvents.length === 0) {
-            hasMore = false;
-          } else {
-            allSwapEvents = allSwapEvents.concat(swapEvents);
-            
-            // If we got fewer than the limit, we've reached the end
-            if (swapEvents.length < limit) {
-              hasMore = false;
-            } else {
-              offset += limit;
-            }
-          }
-        }
-
-        // Calculate volume and fees from swap events
-        // For USDC swaps: use USDC amount directly
-        // For token-to-token swaps: calculate USD value using token prices
-        let totalVolume = 0;
-        let totalFees = 0;
-        const dailyMap = new Map<string, { volume: number; fees: number }>();
-        
-        const usdcLower = USDC_ADDRESS.toLowerCase();
-        
-        // Pre-calculate prices for all unique tokens (needed for token-to-token swaps)
-      const tokenPrices = new Map<string, number>();
-      const uniqueTokens = new Set<string>();
-      
-      // Collect all unique tokens
-        for (const event of allSwapEvents) {
-          if (event.token_in) uniqueTokens.add(event.token_in.toLowerCase());
-          if (event.token_out) uniqueTokens.add(event.token_out.toLowerCase());
+          if (!totalMetricsResponse.ok) {
+            throw new Error('Failed to fetch total metrics');
       }
 
-        // Pre-calculate prices for all tokens (if pools are loaded)
-        if (pools.length > 0 && publicClient) {
-          const pricePromises = Array.from(uniqueTokens).map(async (tokenAddr) => {
-            if (tokenAddr === usdcLower) {
-              tokenPrices.set(tokenAddr, 1); // USDC is always $1
-              return;
+          const totalMetrics = await totalMetricsResponse.json();
+          totalVolume = totalMetrics[0]?.total_volume || 0;
+          totalFees = totalMetrics[0]?.total_fees || 0;
+        } else {
+          // Fetch period-specific totals (7d, 30d, 90d)
+          const periodMetricsResponse = await fetch(
+            `${supabaseUrl}/rest/v1/rpc/get_volume_fees_period`,
+            {
+              method: 'POST',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                usdc_address: usdcAddress,
+                days_back: volumeFeesPeriod 
+              }),
             }
-            try {
-              const price = await getTokenPriceInUSD(tokenAddr as Address, pools);
-              tokenPrices.set(tokenAddr, price);
-            } catch (error) {
-              tokenPrices.set(tokenAddr, 0);
-            }
+          );
+
+          if (!periodMetricsResponse.ok) {
+            throw new Error('Failed to fetch period metrics');
+          }
+
+            const periodMetrics = await periodMetricsResponse.json();
+          totalVolume = periodMetrics[0]?.total_volume || 0;
+          totalFees = periodMetrics[0]?.total_fees || 0;
+        }
+
+        // Fetch daily metrics for charts (filtered by period)
+        const daysBack = volumeFeesPeriod === 'all' ? null : volumeFeesPeriod;
+        const dailyMetricsResponse = await fetch(
+          `${supabaseUrl}/rest/v1/rpc/get_daily_volume_fees`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              usdc_address: usdcAddress, 
+              days_back: daysBack 
+            }),
+          }
+        );
+
+        if (!dailyMetricsResponse.ok) {
+          throw new Error('Failed to fetch daily metrics');
+        }
+
+        const dailyMetrics = await dailyMetricsResponse.json();
+
+        // dailyMetrics is an array of { date, volume, fees }
+        const dailyMap = new Map<string, { volume: number; fees: number }>();
+        for (const row of dailyMetrics) {
+          const dateKey = row.date; // Already in YYYY-MM-DD format
+          dailyMap.set(dateKey, {
+            volume: Number(row.volume) || 0,
+            fees: Number(row.fees) || 0,
           });
-          
-          // Wait for all prices to be calculated
-          await Promise.all(pricePromises);
         }
         
-        // Now calculate volume and fees for all events
-        for (const event of allSwapEvents) {
-          let volumeUSD = 0;
-          
-          const tokenInLower = event.token_in?.toLowerCase();
-          const tokenOutLower = event.token_out?.toLowerCase();
-          
-          // Case 1: USDC is involved - use USDC amount directly
-          if (tokenInLower === usdcLower) {
-            // USDC is tokenIn - use amount_in with 6 decimals
-            volumeUSD = Number(event.amount_in) / 1e6;
-          } else if (tokenOutLower === usdcLower) {
-            // USDC is tokenOut - use amount_out with 6 decimals
-            volumeUSD = Number(event.amount_out) / 1e6;
-          } else {
-            // Case 2: Token-to-token swap (no USDC) - calculate USD value using token prices
-            const tokenInDecimals = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === tokenInLower
-          )?.[1]?.decimals || 18;
-
-            const tokenOutDecimals = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === tokenOutLower
-          )?.[1]?.decimals || 18;
-
-            const amountIn = Number(event.amount_in) / Math.pow(10, tokenInDecimals);
-            const amountOut = Number(event.amount_out) / Math.pow(10, tokenOutDecimals);
-
-            // Get prices (should be pre-calculated)
-            const tokenInPrice = tokenPrices.get(tokenInLower) || 0;
-            const tokenOutPrice = tokenPrices.get(tokenOutLower) || 0;
-
-            // Use whichever price is available and non-zero
-            if (tokenInPrice > 0) {
-              volumeUSD = amountIn * tokenInPrice;
-            } else if (tokenOutPrice > 0) {
-              volumeUSD = amountOut * tokenOutPrice;
-            } else {
-              // If no price available, skip this swap (can't calculate USD value)
-              continue;
-            }
-          }
-          
-          if (volumeUSD > 0) {
-            const feesUSD = volumeUSD * 0.003; // 0.3% fee
-            
-            totalVolume += volumeUSD;
-            totalFees += feesUSD;
-            
-            // Group by date for chart (only last 30 days for chart display)
-            const eventDate = new Date(event.timestamp);
-            const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-            
-            if (eventDate.getTime() >= thirtyDaysAgo) {
-              const dateKey = eventDate.toISOString().split('T')[0];
-              const existing = dailyMap.get(dateKey) || { volume: 0, fees: 0 };
-              existing.volume += volumeUSD;
-              existing.fees += feesUSD;
-              dailyMap.set(dateKey, existing);
-            }
-          }
-        }
+        // Log metrics summary (single log per fetch)
+        console.log(`📊 Metrics (${volumeFeesPeriod === 'all' ? 'All Time' : `${volumeFeesPeriod}d`}): Volume: $${Number(totalVolume).toFixed(2)}, Fees: $${Number(totalFees).toFixed(2)}, Daily data points: ${dailyMetrics.length}`);
         
-        setTotalVolume(totalVolume);
-        setTotalFees(totalFees);
+        setTotalVolume(Number(totalVolume));
+        setTotalFees(Number(totalFees));
         setDailyMetricsMap(dailyMap);
-        
         setIsLoadingMetrics(false);
         } catch (error) {
+        console.error('Error fetching metrics:', error);
+        // Set to 0 if fetch fails
+        setTotalVolume(0);
+        setTotalFees(0);
+        setDailyMetricsMap(new Map());
         setIsLoadingMetrics(false);
       }
     };
 
     fetchMetricsFast();
     
-    // Auto-refresh every 5 minutes to get new swaps
+    // Auto-refresh every 30 seconds for real-time updates
     const refreshInterval = setInterval(() => {
       fetchMetricsFast();
-    }, 300000); // 5 minutes (300000 ms)
+    }, 30000); // 30 seconds
     
     return () => clearInterval(refreshInterval);
-  }, [isArcTestnet, supabaseUrl, supabaseKey, pools, publicClient, getTokenPriceInUSD]);
+  }, [isArcTestnet, supabaseUrl, supabaseKey, volumeFeesPeriod]);
 
   // Note: Swap events and fees/volume tracking will be handled by a backend indexer
 
@@ -494,7 +454,7 @@ export default function Pools() {
       return sum + (pool.totalLiquidity || 0);
     }, 0);
 
-    setTotalTVL(totalTVL);
+      setTotalTVL(totalTVL);
   }, [pools]);
 
   // Generate TVL history when totalTVL or daily metrics change
@@ -607,6 +567,25 @@ export default function Pools() {
     <div className="w-full max-w-5xl mx-auto px-4 space-y-6">
       {/* TVL Overview Card */}
       {isArcTestnet && (
+        <div className="mb-6 md:mb-8">
+          {/* Period Filter Buttons */}
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <span className="text-xs text-gray-600 font-medium">Period:</span>
+            {(['all', 7, 30, 90] as const).map((period) => (
+              <button
+                key={period}
+                onClick={() => setVolumeFeesPeriod(period)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  volumeFeesPeriod === period
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                }`}
+              >
+                {period === 'all' ? 'All Time' : `${period}d`}
+              </button>
+            ))}
+          </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Total TVL Card */}
           <motion.div
@@ -767,6 +746,7 @@ export default function Pools() {
             </div>
           </motion.div>
 
+          </div>
         </div>
       )}
 
