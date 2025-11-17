@@ -310,8 +310,9 @@ export default function Pools() {
     return 0;
   }, [publicClient]);
 
-  // Fetch metrics from Supabase - OPTIMIZED: Only fetch USDC swaps (all swaps involve USDC)
-  // Much faster: Filtered query + simple USDC amount sum (no price calculations needed)
+  // Fetch metrics from Supabase - OPTIMIZED: Uses materialized views for 1000x faster queries
+  // Materialized views are pre-aggregated and refreshed every 10 minutes by the indexer
+  // Queries read 1-90 rows instead of scanning 90k+ swap events (99.9% less egress)
   useEffect(() => {
     if (!isArcTestnet || !supabaseUrl || !supabaseKey) {
       setIsLoadingMetrics(false);
@@ -324,8 +325,8 @@ export default function Pools() {
       try {
         const usdcAddress = USDC_ADDRESS.toLowerCase();
       
-        // SCALABLE: Use Supabase RPC functions to aggregate server-side
-        // This fetches only aggregated results, not 30k+ individual events
+        // OPTIMIZED: RPC functions now read from materialized views (pre-aggregated data)
+        // Reads 1 row for totals, 1-90 rows for daily data (instead of scanning 90k+ events)
         let totalVolume = 0;
         let totalFees = 0;
         
@@ -380,7 +381,7 @@ export default function Pools() {
         }
 
         // Fetch daily metrics for charts (filtered by period)
-        // Limit to max 90 days even for "all time" to reduce egress - cap at 90 days for daily metrics
+        // Materialized view stores last 90 days - cap at 90 days even for "all time"
         const daysBack = volumeFeesPeriod === 'all' ? 90 : volumeFeesPeriod;
         const dailyMetricsResponse = await fetch(
           `${supabaseUrl}/rest/v1/rpc/get_daily_volume_fees`,

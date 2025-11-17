@@ -175,6 +175,7 @@ console.log('============================\n');
 // Track known pools
 const knownPools = new Set();
 let lastProcessedBlock = null;
+let lastMaterializedViewRefresh = null; // Track when we last refreshed materialized views
 
 /**
  * Fetch all pools from factory
@@ -550,6 +551,25 @@ async function index() {
   console.log('Pool reserves updated from on-chain');
 
   console.log(`Indexed ${allSwapEvents.length} swap events`);
+
+  // Refresh materialized views every 10 minutes to keep aggregated data up to date
+  const now = Date.now();
+  const TEN_MINUTES = 10 * 60 * 1000; // 10 minutes in milliseconds
+  
+  if (!lastMaterializedViewRefresh || (now - lastMaterializedViewRefresh) >= TEN_MINUTES) {
+    try {
+      console.log('🔄 Refreshing materialized views (every 10 minutes)...');
+      const { error } = await supabase.rpc('refresh_volume_fees_views');
+      if (error) {
+        console.error('Error refreshing materialized views:', error);
+      } else {
+        console.log('✅ Materialized views refreshed successfully');
+        lastMaterializedViewRefresh = now;
+      }
+    } catch (error) {
+      console.error('Exception refreshing materialized views:', error);
+    }
+  }
 }
 
 /**
