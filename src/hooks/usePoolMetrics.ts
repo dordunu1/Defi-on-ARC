@@ -70,9 +70,9 @@ export function usePoolMetrics(
         const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
         // Fetch swap events from last 24 hours (rolling window)
-        // Use timestamp.desc to get most recent first, then we'll filter
+        // Limit to 1500 events to balance egress reduction with accurate 24h volume calculation
         const swapEventsResponse = await fetch(
-          `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddr}&timestamp=gte.${twentyFourHoursAgo.toISOString()}&select=token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.desc`,
+          `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddr}&timestamp=gte.${twentyFourHoursAgo.toISOString()}&select=token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.desc&limit=1500`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -242,12 +242,13 @@ export function usePoolMetrics(
     // Initial fetch
     fetchMetrics(false);
 
-    // Set up polling every 5 seconds (background, no loading state)
+    // Set up polling every 30 seconds (background, no loading state)
+    // Reduced from 5s to 30s to reduce egress - metrics don't need to update that frequently
     pollInterval = setInterval(() => {
       if (isMounted) {
         fetchMetrics(true); // Background poll
       }
-    }, 5000);
+    }, 30000);
 
     // Cleanup
     return () => {

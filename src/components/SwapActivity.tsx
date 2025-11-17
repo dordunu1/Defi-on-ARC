@@ -130,12 +130,12 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
     // Initial load
     updateEvents(false);
 
-    // Poll for new events every 5 seconds
+    // Poll for new events every 30 seconds (reduced from 5s to reduce egress)
     pollInterval = setInterval(() => {
       if (isMounted) {
         updateEvents(true);
       }
-    }, 5000);
+    }, 30000);
 
     return () => {
       isMounted = false;
