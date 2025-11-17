@@ -30,50 +30,25 @@ export function SwapEventsCacheProvider({ children }: { children: React.ReactNod
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-  // Fast fetch function - optimized for speed
+  // Fast fetch function - fetch enough events to get 30 with volume >= $3 USD
   const fetchPoolEvents = useCallback(async (poolAddress: Address): Promise<SwapEvent[]> => {
     const poolAddrLower = poolAddress.toLowerCase();
-    let allEvents: SwapEvent[] = [];
-    let rangeStart = 0;
-    const batchSize = 1000; // Fetch in batches of 1000
-
-    while (true) {
-      const rangeEnd = rangeStart + batchSize - 1;
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Range': `${rangeStart}-${rangeEnd}`,
-          },
-        }
-      );
-
-      if (!response.ok) break;
-
-      const events = await response.json();
-      if (events.length === 0) break;
-
-      allEvents = [...allEvents, ...events];
-
-      // Check if we've fetched all events
-      const contentRange = response.headers.get('content-range');
-      if (contentRange) {
-        const match = contentRange.match(/\d+-\d+\/(\d+)/);
-        if (match) {
-          const total = parseInt(match[1]);
-          if (allEvents.length >= total) break;
-        }
+    
+    // Fetch 150 events to ensure we get 30 events with volume >= $3 USD after filtering
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc&limit=150`,
+      {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
       }
+    );
 
-      // If we got fewer than batchSize, we're done
-      if (events.length < batchSize) break;
+    if (!response.ok) return [];
 
-      rangeStart += batchSize;
-    }
-
-    return allEvents;
+    const events = await response.json();
+    return events || [];
   }, [supabaseUrl, supabaseKey]);
 
   // Preload events for a pool (called on site load)

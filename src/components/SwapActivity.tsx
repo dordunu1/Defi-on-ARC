@@ -24,7 +24,7 @@ interface SwapActivityProps {
   poolAddress: Address | null;
 }
 
-const EVENTS_PER_PAGE = 24;
+const EVENTS_PER_PAGE = 10;
 
 export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapActivityProps) {
   const [swapEvents, setSwapEvents] = useState<SwapEvent[]>([]);
@@ -59,11 +59,11 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
     let pollInterval: NodeJS.Timeout | null = null;
     let lastTxHash: string | null = null;
 
-    // Fast fetch function for new events only (for polling)
+    // Fast fetch function for new events only (for polling) - fetch enough to get 30 with volume >= $3
     const fetchNewEvents = async (): Promise<SwapEvent[]> => {
       const poolAddrLower = poolAddress.toLowerCase();
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc&limit=100`,
+        `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc&limit=150`,
         {
           headers: {
             'apikey': supabaseKey,
@@ -95,45 +95,12 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
               const currentFirstTxHash = cachedEvents[0]?.tx_hash;
               const newFirstTxHash = newEvents[0]?.tx_hash;
               
-              // If we have new events, fetch all and update cache
+              // If we have new events, use the new events we already fetched (150 events, will be filtered to 30 >= $3)
               if (currentFirstTxHash !== newFirstTxHash) {
-                // Fetch all events (cache might be stale)
-                const poolAddrLower = poolAddress.toLowerCase();
-                let allEvents: SwapEvent[] = [];
-                let rangeStart = 0;
-                const batchSize = 1000;
-
-                while (true) {
-                  const rangeEnd = rangeStart + batchSize - 1;
-                  const response = await fetch(
-                    `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc`,
-                    {
-                      headers: {
-                        'apikey': supabaseKey,
-                        'Authorization': `Bearer ${supabaseKey}`,
-                        'Range': `${rangeStart}-${rangeEnd}`,
-                      },
-                    }
-                  );
-
-                  if (!response.ok) break;
-                  const events = await response.json();
-                  if (events.length === 0) break;
-
-                  allEvents = [...allEvents, ...events];
-
-                  const contentRange = response.headers.get('content-range');
-                  if (contentRange) {
-                    const match = contentRange.match(/\d+-\d+\/(\d+)/);
-                    if (match && allEvents.length >= parseInt(match[1])) break;
-                  }
-                  if (events.length < batchSize) break;
-                  rangeStart += batchSize;
-                }
-
+                // Store all fetched events (will be filtered to 30 events >= $3 USD in filteredSwapEvents)
                 if (isMounted) {
-                  updatePoolEvents(poolAddress, allEvents);
-                  setSwapEvents(allEvents);
+                  updatePoolEvents(poolAddress, newEvents);
+                  setSwapEvents(newEvents);
                 }
               }
             }
@@ -211,13 +178,15 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
     return 0;
   }, []);
 
-  // Filter swaps below $3 USDC
+  // Filter swaps below $3 USDC and take only the latest 30 that meet criteria
   const MIN_USDC_VALUE = 3;
   const filteredSwapEvents = useMemo(() => {
-    return swapEvents.filter(event => {
+    const filtered = swapEvents.filter(event => {
       const usdcValue = getUSDCValue(event);
       return usdcValue >= MIN_USDC_VALUE;
     });
+    // Take only the latest 30 events that meet the $3 minimum
+    return filtered.slice(0, 30);
   }, [swapEvents, getUSDCValue]);
 
   // Pagination calculations (using filtered events)
@@ -320,12 +289,11 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
   };
 
   return (
-    <div className="bg-white rounded-3xl p-6 border border-orange-200 shadow-xl mt-6">
+    <div className="bg-white rounded-2xl p-4 border border-orange-200 shadow-lg mt-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-900">Trade History & Traders</h3>
         <div className="text-xs text-gray-500">
-          {swapEvents.length} {swapEvents.length === 1 ? 'trade' : 'trades'}
-          {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+          Showing some recent trades
         </div>
       </div>
 
@@ -343,7 +311,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto overflow-y-hidden min-h-[600px]">
+        <div className="overflow-x-auto overflow-y-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
@@ -475,7 +443,7 @@ export default function SwapActivity({ fromToken, toToken, poolAddress }: SwapAc
       {filteredSwapEvents.length > EVENTS_PER_PAGE && (
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
           <div className="text-sm text-gray-600">
-            Showing {((currentPage - 1) * EVENTS_PER_PAGE) + 1} to {Math.min(currentPage * EVENTS_PER_PAGE, filteredSwapEvents.length)} of {swapEvents.length} trades
+            Page {currentPage} of {totalPages}
           </div>
           <div className="flex items-center gap-2">
             <button

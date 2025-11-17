@@ -554,7 +554,7 @@ async function index() {
 
 /**
  * Store price history snapshot for a pool
- * Only stores if it's been at least 1 minute since last snapshot (to avoid excessive writes)
+ * Only stores if it's been at least 50 seconds since last snapshot (to avoid excessive writes)
  */
 async function storePriceHistory(poolAddress, tokenA, tokenB, tokenAInfo, tokenBInfo, reserveA, reserveB) {
   if (!supabase) return;
@@ -581,8 +581,8 @@ async function storePriceHistory(poolAddress, tokenA, tokenB, tokenAInfo, tokenB
       .limit(1)
       .single();
 
-    // Only store if last snapshot was more than 1 minute ago (or no previous snapshot)
-    if (!lastSnapshot || (now - new Date(lastSnapshot.timestamp)) > 60000) {
+    // Only store if last snapshot was more than 50 seconds ago (or no previous snapshot)
+    if (!lastSnapshot || (now - new Date(lastSnapshot.timestamp)) > 50000) {
       const { error } = await supabase.from('price_history').insert({
         pool_address: poolAddress.toLowerCase(),
         token_a: tokenA.toLowerCase(),
