@@ -380,7 +380,8 @@ export default function Pools() {
         }
 
         // Fetch daily metrics for charts (filtered by period)
-        const daysBack = volumeFeesPeriod === 'all' ? null : volumeFeesPeriod;
+        // Limit to max 90 days even for "all time" to reduce egress - cap at 90 days for daily metrics
+        const daysBack = volumeFeesPeriod === 'all' ? 90 : volumeFeesPeriod;
         const dailyMetricsResponse = await fetch(
           `${supabaseUrl}/rest/v1/rpc/get_daily_volume_fees`,
           {
@@ -432,10 +433,10 @@ export default function Pools() {
 
     fetchMetricsFast();
     
-    // Auto-refresh every 30 seconds for real-time updates
+    // Auto-refresh every 1 hour - metrics don't need real-time updates, reduces egress significantly
     const refreshInterval = setInterval(() => {
       fetchMetricsFast();
-    }, 30000); // 30 seconds
+    }, 60 * 60 * 1000); // 1 hour in milliseconds
     
     return () => clearInterval(refreshInterval);
   }, [isArcTestnet, supabaseUrl, supabaseKey, volumeFeesPeriod]);
