@@ -242,13 +242,13 @@ export function usePoolMetrics(
     // Initial fetch
     fetchMetrics(false);
 
-    // Set up polling every 30 seconds (background, no loading state)
-    // Reduced from 5s to 30s to reduce egress - metrics don't need to update that frequently
+    // Set up polling every 1 hour (background, no loading state)
+    // 24h volume doesn't need frequent updates - 1 hour is sufficient for accurate metrics while reducing egress
     pollInterval = setInterval(() => {
       if (isMounted) {
         fetchMetrics(true); // Background poll
       }
-    }, 30000);
+    }, 60 * 60 * 1000); // 1 hour in milliseconds
 
     // Cleanup
     return () => {
