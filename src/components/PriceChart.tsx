@@ -509,7 +509,7 @@ export default function PriceChart({
               
               {/* 24h Volume */}
               {!metricsLoading && poolMetrics.volume24h > 0 && (
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 whitespace-nowrap">
                   <span className="font-medium">24h Vol:</span>{' '}
                   <span className="text-gray-900">{formatVolume(poolMetrics.volume24h)}</span>
                   <span className="text-xs text-gray-400 ml-1">(updates hourly)</span>
