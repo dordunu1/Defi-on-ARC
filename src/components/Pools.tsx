@@ -548,6 +548,12 @@ export default function Pools() {
 
   const filteredPools = useMemo(() => {
     return pools.filter((pool) => {
+      // Filter out pools with TVL less than 15K
+      const poolTVL = pool.totalLiquidity || 0;
+      if (poolTVL < 3500) {
+        return false;
+      }
+      
       const matchesSearch = 
         pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||

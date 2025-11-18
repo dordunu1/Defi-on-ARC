@@ -20,6 +20,8 @@ interface CustomToken {
 
 // Minimum USDC balance required to create a pool (5,000 USDC)
 const MIN_USDC_BALANCE = 5000;
+// Minimum ERC20 token balance required for ERC20-ERC20 pools (50,000 tokens)
+const MIN_ERC20_BALANCE = 50000;
 
 type Step = 'select-tokens' | 'enter-amounts';
 
@@ -34,6 +36,7 @@ export default function CreatePool() {
   const [error, setError] = useState<string | null>(null);
   const [showTokenSelector, setShowTokenSelector] = useState<'A' | 'B' | null>(null);
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
+  const [unauthorizedModalType, setUnauthorizedModalType] = useState<'usdc' | 'erc20'>('usdc');
   
   // Custom tokens state
   const [customTokens, setCustomTokens] = useState<Map<Address, CustomToken>>(new Map());
@@ -68,6 +71,32 @@ export default function CreatePool() {
 
   const isValidA = tokenA && isAddress(tokenA);
   const isValidB = tokenB && isAddress(tokenB);
+
+  // Check if a token address is USDC
+  const isUSDC = useCallback((tokenAddress: Address | string): boolean => {
+    if (!tokenAddress) return false;
+    return (tokenAddress as string).toLowerCase() === TOKENS.USDC.address.toLowerCase();
+  }, []);
+
+  // Check if one of the tokens is USDC (required for pool creation)
+  const hasUSDCPair = useMemo(() => {
+    if (!isValidA || !isValidB) return false;
+    return isUSDC(tokenA) || isUSDC(tokenB);
+  }, [isValidA, isValidB, tokenA, tokenB, isUSDC]);
+
+  // Get the non-USDC token address (for ERC20-ERC20 validation)
+  const nonUSDCToken = useMemo(() => {
+    if (!hasUSDCPair || !isValidA || !isValidB) return null;
+    if (isUSDC(tokenA)) return tokenB as Address;
+    if (isUSDC(tokenB)) return tokenA as Address;
+    return null;
+  }, [hasUSDCPair, isValidA, isValidB, tokenA, tokenB, isUSDC]);
+
+  // Check if this is an ERC20-ERC20 pair (neither token is USDC)
+  const isERC20ERC20Pair = useMemo(() => {
+    if (!isValidA || !isValidB) return false;
+    return !isUSDC(tokenA) && !isUSDC(tokenB);
+  }, [isValidA, isValidB, tokenA, tokenB, isUSDC]);
 
   // Close token selector when clicking outside
   useEffect(() => {
@@ -481,6 +510,19 @@ export default function CreatePool() {
     return formatUnits(balanceBRaw, decimals);
   }, [balanceBRaw, decimalsB]);
 
+  // Check if user has sufficient ERC20 balance for ERC20-ERC20 pool creation
+  const hasSufficientERC20 = useMemo(() => {
+    if (!isERC20ERC20Pair || !isConnected || !balanceARaw || !balanceBRaw) return false;
+    
+    // For ERC20-ERC20 pairs, check if user has at least 50k of either token
+    const decimalsAVal = decimalsA ? Number(decimalsA) : 18;
+    const decimalsBVal = decimalsB ? Number(decimalsB) : 18;
+    const balanceA = Number(formatUnits(balanceARaw, decimalsAVal));
+    const balanceB = Number(formatUnits(balanceBRaw, decimalsBVal));
+    
+    return balanceA >= MIN_ERC20_BALANCE || balanceB >= MIN_ERC20_BALANCE;
+  }, [isERC20ERC20Pair, isConnected, balanceARaw, balanceBRaw, decimalsA, decimalsB]);
+
   const { writeContract, data: createHash, isPending: isCreating, error: writeError } = useWriteContract();
   const { isLoading: isConfirmingCreate, isSuccess: poolCreated } = useWaitForTransactionReceipt({ hash: createHash });
 
@@ -498,12 +540,6 @@ export default function CreatePool() {
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
   const handleContinueToAmounts = () => {
-    // Check USDC balance requirement before proceeding
-    if (isConnected && !hasSufficientUSDC) {
-      setShowUnauthorizedModal(true);
-      return;
-    }
-    
     setError(null);
     
     if (!isAddress(tokenA) || !isAddress(tokenB)) {
@@ -514,6 +550,30 @@ export default function CreatePool() {
     if (tokenA.toLowerCase() === tokenB.toLowerCase()) {
       setError('Token addresses must be different');
       return;
+    }
+
+    // Check if one token is USDC (required)
+    if (!hasUSDCPair) {
+      setError('One of the tokens must be USDC. Only USDC pair pools are allowed.');
+      return;
+    }
+
+    // For USDC pairs, check USDC balance requirement
+    if (isConnected && hasUSDCPair && !isERC20ERC20Pair) {
+      if (!hasSufficientUSDC) {
+        setUnauthorizedModalType('usdc');
+        setShowUnauthorizedModal(true);
+        return;
+      }
+    }
+
+    // For ERC20-ERC20 pairs (should not happen if validation works, but check anyway)
+    if (isConnected && isERC20ERC20Pair) {
+      if (!hasSufficientERC20) {
+        setUnauthorizedModalType('erc20');
+        setShowUnauthorizedModal(true);
+        return;
+      }
     }
 
     setStep('enter-amounts');
@@ -535,17 +595,35 @@ export default function CreatePool() {
   };
 
   const handleCreatePool = async () => {
-    // Check USDC balance requirement before proceeding
-    if (isConnected && !hasSufficientUSDC) {
-      setShowUnauthorizedModal(true);
-      return;
-    }
-
     setError(null);
     
     if (!isAddress(tokenA) || !isAddress(tokenB)) {
       setError('Please enter valid token addresses');
       return;
+    }
+
+    // Check if one token is USDC (required)
+    if (!hasUSDCPair) {
+      setError('One of the tokens must be USDC. Only USDC pair pools are allowed.');
+      return;
+    }
+
+    // For USDC pairs, check USDC balance requirement
+    if (isConnected && hasUSDCPair && !isERC20ERC20Pair) {
+      if (!hasSufficientUSDC) {
+        setUnauthorizedModalType('usdc');
+        setShowUnauthorizedModal(true);
+        return;
+      }
+    }
+
+    // For ERC20-ERC20 pairs, check 50k minimum requirement
+    if (isConnected && isERC20ERC20Pair) {
+      if (!hasSufficientERC20) {
+        setUnauthorizedModalType('erc20');
+        setShowUnauthorizedModal(true);
+        return;
+      }
     }
 
     if (!tokenASymbolKey || !tokenBSymbolKey) {
@@ -1065,14 +1143,25 @@ export default function CreatePool() {
             className="space-y-6"
           >
             {/* Info Note */}
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-blue-800">
-                  <span className="font-semibold">Note:</span> Only USDC pair pools are allowed. One of the tokens must be USDC.
-                </p>
+            {isValidA && isValidB && !hasUSDCPair ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-800">
+                    <span className="font-semibold">Error:</span> One of the tokens must be USDC. Only USDC pair pools are allowed.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-blue-800">
+                    <span className="font-semibold">Note:</span> Only USDC pair pools are allowed. One of the tokens must be USDC.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Token A and B on same line */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1375,14 +1464,14 @@ export default function CreatePool() {
             {/* Continue Button */}
             <motion.button
               onClick={handleContinueToAmounts}
-              disabled={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB)}
+              disabled={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair}
               className={`w-full py-2.5 sm:py-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-300 flex items-center justify-center gap-2 ${
-                !isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB)
+                !isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
               }`}
-              whileHover={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) ? {} : { scale: 1.02 }}
-              whileTap={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) ? {} : { scale: 0.98 }}
+              whileHover={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair ? {} : { scale: 1.02 }}
+              whileTap={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair ? {} : { scale: 0.98 }}
             >
               Continue
               <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2106,7 +2195,9 @@ export default function CreatePool() {
                     <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
                       <AlertCircle className="w-6 h-6 text-orange-600" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900">Insufficient USDC Balance</h3>
+                    <h3 className="text-xl font-bold text-gray-900">
+                      {unauthorizedModalType === 'usdc' ? 'Insufficient USDC Balance' : 'Insufficient Token Balance'}
+                    </h3>
                   </div>
                   <button
                     onClick={() => setShowUnauthorizedModal(false)}
@@ -2118,23 +2209,54 @@ export default function CreatePool() {
 
                 <div className="space-y-4">
                   <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
-                    <p className="text-sm text-gray-700 leading-relaxed mb-3">
-                      To create a liquidity pool, you need a minimum balance of <span className="font-semibold text-orange-600">{MIN_USDC_BALANCE.toLocaleString()} USDC</span>.
-                    </p>
-                    {isConnected && (
-                      <div className="mt-3 pt-3 border-t border-orange-200">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">Your USDC Balance:</span>
-                          <span className={`text-sm font-semibold ${parseFloat(usdcBalanceFormatted) >= MIN_USDC_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
-                            {parseFloat(usdcBalanceFormatted).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
-                          </span>
-                        </div>
-                        {parseFloat(usdcBalanceFormatted) < MIN_USDC_BALANCE && (
-                          <div className="mt-2 text-xs text-orange-600">
-                            You need {((MIN_USDC_BALANCE - parseFloat(usdcBalanceFormatted)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} more USDC to create a pool.
+                    {unauthorizedModalType === 'usdc' ? (
+                      <>
+                        <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                          To create a liquidity pool with USDC, you need a minimum balance of <span className="font-semibold text-orange-600">{MIN_USDC_BALANCE.toLocaleString()} USDC</span>.
+                        </p>
+                        {isConnected && (
+                          <div className="mt-3 pt-3 border-t border-orange-200">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Your USDC Balance:</span>
+                              <span className={`text-sm font-semibold ${parseFloat(usdcBalanceFormatted) >= MIN_USDC_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
+                                {parseFloat(usdcBalanceFormatted).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
+                              </span>
+                            </div>
+                            {parseFloat(usdcBalanceFormatted) < MIN_USDC_BALANCE && (
+                              <div className="mt-2 text-xs text-orange-600">
+                                You need {((MIN_USDC_BALANCE - parseFloat(usdcBalanceFormatted)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} more USDC to create a pool.
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                          To create an ERC20-ERC20 liquidity pool, you need a minimum balance of <span className="font-semibold text-orange-600">{MIN_ERC20_BALANCE.toLocaleString()} tokens</span> of either token in the pair.
+                        </p>
+                        {isConnected && nonUSDCToken && (
+                          <div className="mt-3 pt-3 border-t border-orange-200 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Token A Balance:</span>
+                              <span className={`text-sm font-semibold ${parseFloat(balanceAFinal) >= MIN_ERC20_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
+                                {parseFloat(balanceAFinal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {symbolA || 'Token A'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Token B Balance:</span>
+                              <span className={`text-sm font-semibold ${parseFloat(balanceBFinal) >= MIN_ERC20_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
+                                {parseFloat(balanceBFinal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {symbolB || 'Token B'}
+                              </span>
+                            </div>
+                            {parseFloat(balanceAFinal) < MIN_ERC20_BALANCE && parseFloat(balanceBFinal) < MIN_ERC20_BALANCE && (
+                              <div className="mt-2 text-xs text-orange-600">
+                                You need at least {MIN_ERC20_BALANCE.toLocaleString()} of either token to create a pool.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
