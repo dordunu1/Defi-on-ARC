@@ -179,7 +179,7 @@ export default function Swap() {
         const otherToken = wouldBeFrom ? toToken : fromToken;
         
         if (isBlockedPair(tokenInfo.address, otherToken)) {
-          setTokenFetchError('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+          setTokenFetchError('This pool was created with an imbalanced state by the creator. Trading for USDC/EURC pair is disabled.');
           setAddressInput('');
           return;
         }
@@ -740,7 +740,7 @@ export default function Swap() {
 
     // Check if pair is blocked (USDC/EURC)
     if (isBlockedPair(fromToken, toToken)) {
-      setErrorMessage('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+      setErrorMessage('This pool was created with an imbalanced state by the creator. Trading for USDC/EURC pair is disabled.');
       return;
     }
 
@@ -798,7 +798,7 @@ export default function Swap() {
     
     // Check if pair is blocked (USDC/EURC)
     if (isBlockedPair(fromToken, toToken)) {
-      setErrorMessage('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+      setErrorMessage('This pool was created with an imbalanced state by the creator. Trading for USDC/EURC pair is disabled.');
       setShowReviewModal(false);
       return;
     }
@@ -902,7 +902,7 @@ export default function Swap() {
     
     // Check if the new pair is blocked
     if (isBlockedPair(newFromToken, newToToken)) {
-      setTokenFetchError('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+      setTokenFetchError('This pool was created with an imbalanced state by the creator. Trading for USDC/EURC pair is disabled.');
       setShowTokenSelector(null);
       setAddressInput('');
       return;
@@ -1417,7 +1417,7 @@ export default function Swap() {
             <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-red-800">
               <p className="font-medium">Trading Disabled</p>
-              <p className="text-xs mt-1">This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.</p>
+              <p className="text-xs mt-1">This pool was created with an imbalanced state by the creator. Trading for USDC/EURC pair is disabled.</p>
             </div>
           </div>
         )}
