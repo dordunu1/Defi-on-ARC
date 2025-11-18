@@ -1085,7 +1085,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                       </div>
                     </motion.div>
 
-                {/* Step 4: Mint on Arc */}
+                {/* Step 4: Mint on destination chain */}
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -1152,7 +1152,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           ? 'text-orange-600'
                           : 'text-gray-500'
                       }`}>
-                        Mint on Arc
+                        Mint on {destinationChainName}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {state.currentStep >= 4

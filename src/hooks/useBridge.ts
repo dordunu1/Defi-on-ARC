@@ -172,12 +172,22 @@ export function useBridge() {
         });
       }
 
-      // Only mark as success if mint step (step 4) is completed and we have receiveTxHash
-      if (currentStep === 4 && extractedReceiveTx) {
+      // Wait a bit for the event listeners to update currentStep (mint event fires asynchronously)
+      // The mint event listener will set currentStep to 4, but we check the transaction hash
+      // which is the definitive proof that the mint transaction was created
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Mark as success if we have receiveTxHash (mint transaction was created)
+      // The currentStep will be updated by the event listener, but the hash is the source of truth
+      if (extractedReceiveTx) {
         setResult(result);
         setBridgeStatus("success");
+        // Ensure currentStep is set to 4 if the event hasn't fired yet
+        if (currentStep < 4) {
+          setCurrentStep(4);
+        }
       } else {
-        // If mint wasn't completed, treat as error
+        // If mint transaction hash wasn't found, treat as error
         const errorMsg = "Bridge incomplete: Mint transaction was not completed. Your tokens may still be in transit.";
         setError(errorMsg);
         setBridgeStatus("error");
