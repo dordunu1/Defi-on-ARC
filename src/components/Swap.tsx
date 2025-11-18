@@ -16,6 +16,10 @@ import SwapActivity from './SwapActivity';
 
 const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', 'EURC', 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // USDC first
 
+// USDC and EURC addresses (for blocking imbalanced pool)
+const USDC_ADDRESS = TOKENS.USDC.address.toLowerCase();
+const EURC_ADDRESS = TOKENS.EURC.address.toLowerCase();
+
 // Custom token interface for ERC20 addresses
 interface CustomToken {
   address: Address;
@@ -120,6 +124,46 @@ export default function Swap() {
     }
   }, [publicClient, customTokens]);
   
+  // Check if a pair is USDC/EURC (blocked pair due to imbalanced pool)
+  const isBlockedPair = useCallback((token1: TokenSymbol | Address, token2: TokenSymbol | Address): boolean => {
+    const getTokenAddress = (token: TokenSymbol | Address): string => {
+      // First check if it's an address
+      if (typeof token === 'string' && isAddress(token)) {
+        const tokenAddr = token.toLowerCase();
+        // Check if it matches USDC or EURC addresses directly
+        if (tokenAddr === USDC_ADDRESS || tokenAddr === EURC_ADDRESS) {
+          return tokenAddr;
+        }
+        // Check custom tokens
+        const customToken = customTokens.get(token as Address);
+        if (customToken) {
+          // Check if custom token symbol is USDC or EURC
+          const symbolUpper = customToken.symbol.toUpperCase();
+          if (symbolUpper === 'USDC') {
+            return USDC_ADDRESS;
+          }
+          if (symbolUpper === 'EURC') {
+            return EURC_ADDRESS;
+          }
+        }
+        return '';
+      }
+      // Check if it's a known token symbol
+      const tokenSymbol = token as TokenSymbol;
+      if (TOKENS[tokenSymbol]) {
+        return TOKENS[tokenSymbol].address.toLowerCase();
+      }
+      return '';
+    };
+
+    const addr1 = getTokenAddress(token1);
+    const addr2 = getTokenAddress(token2);
+    
+    // Check if one is USDC and the other is EURC
+    return (addr1 === USDC_ADDRESS && addr2 === EURC_ADDRESS) || 
+           (addr1 === EURC_ADDRESS && addr2 === USDC_ADDRESS);
+  }, [customTokens]);
+
   // Handle address input and fetch token automatically
   const handleAddressInput = useCallback(async (input: string) => {
     setAddressInput(input);
@@ -129,17 +173,28 @@ export default function Swap() {
     if (input && isAddress(input)) {
       const tokenInfo = await fetchTokenInfo(input as Address);
       if (tokenInfo) {
+        // Check if selecting this token would create a blocked pair
+        const wouldBeFrom = showTokenSelector === 'from';
+        const wouldBeTo = showTokenSelector === 'to';
+        const otherToken = wouldBeFrom ? toToken : fromToken;
+        
+        if (isBlockedPair(tokenInfo.address, otherToken)) {
+          setTokenFetchError('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+          setAddressInput('');
+          return;
+        }
+        
         // Auto-select the token after fetching
-        if (showTokenSelector === 'from') {
+        if (wouldBeFrom) {
           setFromToken(tokenInfo.address);
-        } else if (showTokenSelector === 'to') {
+        } else if (wouldBeTo) {
           setToToken(tokenInfo.address);
         }
         setAddressInput('');
         setShowTokenSelector(null);
       }
     }
-  }, [fetchTokenInfo, showTokenSelector]);
+  }, [fetchTokenInfo, showTokenSelector, fromToken, toToken, isBlockedPair]);
   
   // Get token display info (symbol or custom token symbol)
   const getTokenDisplay = useCallback((token: TokenSymbol | Address): { symbol: string; name?: string; isCustom: boolean } => {
@@ -683,6 +738,12 @@ export default function Swap() {
       return;
     }
 
+    // Check if pair is blocked (USDC/EURC)
+    if (isBlockedPair(fromToken, toToken)) {
+      setErrorMessage('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+      return;
+    }
+
     // If not on Arc Testnet, try to add/switch to it
     if (!isArcTestnet) {
       setIsSwitchingNetwork(true);
@@ -731,6 +792,13 @@ export default function Swap() {
     if (!isConnected || !fromAmount || parseFloat(fromAmount) <= 0) return;
     if (!publicClient || !address) {
       setErrorMessage('Wallet not connected');
+      setShowReviewModal(false);
+      return;
+    }
+    
+    // Check if pair is blocked (USDC/EURC)
+    if (isBlockedPair(fromToken, toToken)) {
+      setErrorMessage('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
       setShowReviewModal(false);
       return;
     }
@@ -810,6 +878,36 @@ export default function Swap() {
   };
 
   const selectToken = (token: TokenSymbol | Address) => {
+    // Check if selecting this token would create a blocked pair
+    let newFromToken = fromToken;
+    let newToToken = toToken;
+    
+    if (showTokenSelector === 'from') {
+      if (token === toToken) {
+        // Swap tokens if selecting the same as 'to'
+        newToToken = fromToken;
+        newFromToken = token;
+      } else {
+        newFromToken = token;
+      }
+    } else if (showTokenSelector === 'to') {
+      if (token === fromToken) {
+        // Swap tokens if selecting the same as 'from'
+        newFromToken = toToken;
+        newToToken = token;
+      } else {
+        newToToken = token;
+      }
+    }
+    
+    // Check if the new pair is blocked
+    if (isBlockedPair(newFromToken, newToToken)) {
+      setTokenFetchError('This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.');
+      setShowTokenSelector(null);
+      setAddressInput('');
+      return;
+    }
+    
     if (showTokenSelector === 'from') {
       if (token === toToken) {
         // Swap tokens if selecting the same as 'to'
@@ -1313,6 +1411,17 @@ export default function Swap() {
           </div>
         )}
 
+        {/* Warning for blocked USDC/EURC pair */}
+        {isBlockedPair(fromToken, toToken) && (
+          <div className="mb-4 p-3 bg-red-50/80 rounded-xl border border-red-200/50 flex items-start gap-2 relative z-10">
+            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-red-800">
+              <p className="font-medium">Trading Disabled</p>
+              <p className="text-xs mt-1">This pool was created with an imbalanced state. Trading for USDC/EURC pair is disabled.</p>
+            </div>
+          </div>
+        )}
+
         {/* Success Message removed - now using SwapSuccessModal component */}
 
         {/* Error Message - Only show when not in modal */}
@@ -1329,14 +1438,14 @@ export default function Swap() {
         {/* Swap Button */}
         <motion.button
           onClick={handleSwapClick}
-          disabled={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork}
+          disabled={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isBlockedPair(fromToken, toToken)}
           className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 relative z-0 flex items-center justify-center gap-2 ${
-            !isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork
+            !isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isBlockedPair(fromToken, toToken)
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
           }`}
-          whileHover={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork ? {} : { scale: 1.02 }}
-          whileTap={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork ? {} : { scale: 0.98 }}
+          whileHover={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isBlockedPair(fromToken, toToken) ? {} : { scale: 1.02 }}
+          whileTap={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isBlockedPair(fromToken, toToken) ? {} : { scale: 0.98 }}
         >
           {(isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork) && <Loader2 className="w-5 h-5 animate-spin" />}
           {!isConnected
@@ -1345,6 +1454,8 @@ export default function Swap() {
             ? 'Adding Arc Testnet...'
             : !isArcTestnet
             ? 'Add Arc Testnet'
+            : isBlockedPair(fromToken, toToken)
+            ? 'Trading Disabled'
             : !fromAmount || parseFloat(fromAmount) <= 0
             ? 'Enter Amount'
             : isCalculatingOutput
