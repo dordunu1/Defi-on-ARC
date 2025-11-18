@@ -14,7 +14,7 @@ import ActivityTab from './ActivityTab';
 import SwapSuccessModal from './SwapSuccessModal';
 import SwapActivity from './SwapActivity';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', /* 'EURC', */ 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // EURC commented out - liquidity issue
+const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', 'EURC', 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // USDC first
 
 // Custom token interface for ERC20 addresses
 interface CustomToken {

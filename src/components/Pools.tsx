@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Layers, TrendingUp, ExternalLink, Search, Filter, AlertCircle, DollarSign, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Layers, TrendingUp, ExternalLink, Search, Filter, AlertCircle, DollarSign, RefreshCw, ChevronDown, Info } from 'lucide-react';
 import { useAccount, useReadContract, usePublicClient } from 'wagmi';
 import { DEX_CONFIG } from '../config/dex';
 import { FACTORY_ABI, POOL_ABI, ERC20_ABI } from '../config/abis';
@@ -91,6 +91,7 @@ export default function Pools() {
   const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(true);
   const [dailyMetricsMap, setDailyMetricsMap] = useState<Map<string, { volume: number; fees: number }>>(new Map());
   const [volumeFeesPeriod, setVolumeFeesPeriod] = useState<'all' | 7 | 30 | 90>('all'); // Filter for volume/fees period
+  const [showLowTVLPools, setShowLowTVLPools] = useState(false); // State for expanding low TVL pools section
   const isArcTestnet = chainId === 5042002;
 
   // Supabase configuration
@@ -546,11 +547,30 @@ export default function Pools() {
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
+  // Filter pools with TVL >= 3500 (default view)
   const filteredPools = useMemo(() => {
     return pools.filter((pool) => {
-      // Filter out pools with TVL less than 15K
       const poolTVL = pool.totalLiquidity || 0;
       if (poolTVL < 3500) {
+        return false;
+      }
+      
+      const matchesSearch = 
+        pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return matchesSearch;
+    });
+  }, [pools, searchQuery]);
+
+  // Filter pools with TVL < 3500 (low TVL pools - expandable section)
+  const lowTVLPools = useMemo(() => {
+    return pools.filter((pool) => {
+      const poolTVL = pool.totalLiquidity || 0;
+      if (poolTVL >= 3500) {
         return false;
       }
       
@@ -877,6 +897,68 @@ export default function Pools() {
             ))
           )}
         </div>
+
+        {/* Low TVL Pools Section (Expandable) */}
+        {!isLoading && lowTVLPools.length > 0 && (
+          <div className="relative z-10 mt-6">
+            <motion.button
+              onClick={() => setShowLowTVLPools(!showLowTVLPools)}
+              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-all"
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                  <Info className="w-5 h-5 text-orange-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-gray-900">
+                    Low TVL Pools ({lowTVLPools.length})
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Pools with TVL less than $3,500. When TVL reaches $3,500, they will appear in the default pools list above.
+                  </p>
+                </div>
+              </div>
+              <motion.div
+                animate={{ rotate: showLowTVLPools ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="w-5 h-5 text-gray-600" />
+              </motion.div>
+            </motion.button>
+
+            <AnimatePresence>
+              {showLowTVLPools && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-4 space-y-3">
+                    {lowTVLPools.map((pool) => (
+                      <PoolCard
+                        key={pool.poolAddress}
+                        pool={pool}
+                        filterOption={filterOption}
+                        onAddClick={(poolData) => {
+                          setSelectedPool(poolData);
+                          setShowAddModal(true);
+                        }}
+                        onRemoveClick={(poolData) => {
+                          setSelectedPool(poolData);
+                          setShowRemoveModal(true);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         {/* Empty State for My Pools */}
         {filterOption === 'my-pools' && filteredPools.length === 0 && isConnected && isArcTestnet && poolCountNum > 0 && !isLoading && (

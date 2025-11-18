@@ -8,7 +8,7 @@ import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 import { useDEX, useTokenBalance, usePoolReserves, TOKENS, type TokenSymbol, getPoolAddress, useTokenBalanceByAddress } from '../hooks/useDEX';
 
-const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', /* 'EURC', */ 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // USDC first // EURC commented out - liquidity issue
+const AVAILABLE_TOKENS: TokenSymbol[] = ['USDC', 'EURC', 'SRAC', 'RACS', 'SACS', 'KITTY', 'DOGG']; // USDC first
 
 // Custom token interface for ERC20 addresses
 interface CustomToken {
