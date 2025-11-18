@@ -1430,7 +1430,7 @@ export default function Swap() {
                 exit={{ scale: 0.8, opacity: 0, y: 20 }}
                 transition={{ type: 'spring', damping: 20, stiffness: 300 }}
                 onClick={(e) => e.stopPropagation()}
-                className="relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 max-w-2xl w-full mx-4 border border-white/30 overflow-hidden max-h-[90vh] overflow-y-auto"
+                className="relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 max-w-lg w-full mx-4 border border-white/30 overflow-hidden max-h-[90vh] overflow-y-auto"
                 style={{
                   boxShadow: `
                     inset 0 1px 0 rgba(255, 255, 255, 0.9),
@@ -1730,7 +1730,7 @@ export default function Swap() {
                           `,
                         }}
                       >
-                        <ArrowRight className="w-6 h-6 text-white" />
+                        <ArrowDownUp className="w-6 h-6 text-white" />
                       </div>
                     </motion.div>
                   )}
