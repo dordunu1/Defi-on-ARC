@@ -26,7 +26,9 @@ Run the SQL in `supabase-materialized-views.sql` in your Supabase SQL Editor:
 This will create:
 - `volume_fees_total` - Pre-aggregated total volume and fees (1 row)
 - `volume_fees_daily` - Pre-aggregated daily volume and fees (up to 90 days)
-- `refresh_volume_fees_views()` - Function to refresh both views
+- `pool_volume_24h` - Pre-aggregated 24h volume per pool (1 row per pool)
+- `refresh_volume_fees_views()` - Function to refresh volume_fees views (every 10 min)
+- `refresh_pool_volume_24h()` - Function to refresh pool_volume_24h view (every 1 hour)
 
 ### Step 2: Update RPC Functions
 
@@ -40,7 +42,11 @@ This updates the existing RPC functions to read from materialized views instead 
 
 ### Step 3: Automatic Refresh (Already Configured)
 
-The indexer (`indexer/index.js`) automatically refreshes the materialized views every 10 minutes. No additional setup needed!
+The indexer (`indexer/index.js`) automatically refreshes the materialized views:
+- **volume_fees views**: Every 10 minutes
+- **pool_volume_24h view**: Every 1 hour (24h volume doesn't need frequent updates)
+
+No additional setup needed!
 
 ## How It Works
 
@@ -60,9 +66,20 @@ Time: ~10-50ms
 
 ### Refresh Process:
 ```
-Indexer (every 10 min) → Refresh views → Scan 90k rows (server-side, no egress)
+Indexer (every 10 min) → Refresh volume_fees views → Scan 90k rows (server-side, no egress)
+Indexer (every 1 hour) → Refresh pool_volume_24h view → Scan 24h events (server-side, no egress)
 Frontend (every hour) → Query views → Read 1 row (minimal egress)
 ```
+
+### 24h Volume Optimization:
+**Before**: Frontend fetched 1500 events per pool, calculated volume client-side
+- Egress: 1500 rows × number of pools
+- Problem: If pool had >1500 swaps in 24h, volume was undercounted
+
+**After**: Frontend queries materialized view via RPC function
+- Egress: 1 row per pool
+- Accuracy: Includes ALL swaps in 24h window (no limit)
+- Reduction: 99.9% less egress, 100% accurate volume
 
 ## Egress Comparison
 
@@ -81,11 +98,22 @@ Frontend (every hour) → Query views → Read 1 row (minimal egress)
 
 ## Maintenance
 
-The materialized views are automatically refreshed every 10 minutes by the indexer. You don't need to do anything manually.
+The materialized views are automatically refreshed by the indexer:
+- **volume_fees views**: Every 10 minutes
+- **pool_volume_24h view**: Every 1 hour
+
+You don't need to do anything manually.
 
 If you need to manually refresh:
 ```sql
+-- Refresh volume_fees views
 SELECT refresh_volume_fees_views();
+
+-- Refresh pool_volume_24h view
+SELECT refresh_pool_volume_24h();
+
+-- Refresh all views
+SELECT refresh_all_materialized_views();
 ```
 
 ## Troubleshooting
@@ -101,7 +129,11 @@ SELECT refresh_volume_fees_views();
 - Check that indexes exist on the views
 
 ### Data seems stale?
-- Materialized views refresh every 10 minutes
-- For real-time data, you can manually refresh: `SELECT refresh_volume_fees_views();`
-- Or reduce refresh interval in `indexer/index.js` (currently 10 minutes)
+- **volume_fees views**: Refresh every 10 minutes
+- **pool_volume_24h view**: Refreshes every 1 hour (24h volume doesn't need real-time updates)
+- For real-time data, you can manually refresh:
+  - `SELECT refresh_volume_fees_views();` (volume_fees)
+  - `SELECT refresh_pool_volume_24h();` (pool_volume_24h)
+- Or adjust refresh intervals in `indexer/index.js`
+
 

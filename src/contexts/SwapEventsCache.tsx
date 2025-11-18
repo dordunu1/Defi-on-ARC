@@ -33,21 +33,21 @@ export function SwapEventsCacheProvider({ children }: { children: React.ReactNod
   // Fast fetch function - fetch enough events to get 30 with volume >= $3 USD
   const fetchPoolEvents = useCallback(async (poolAddress: Address): Promise<SwapEvent[]> => {
     const poolAddrLower = poolAddress.toLowerCase();
-    
+
     // Fetch 150 events to ensure we get 30 events with volume >= $3 USD after filtering
-    const response = await fetch(
+      const response = await fetch(
       `${supabaseUrl}/rest/v1/swap_events?pool_address=eq.${poolAddrLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp,sender_address&order=timestamp.desc&limit=150`,
-      {
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-      }
-    );
+        {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+        }
+      );
 
     if (!response.ok) return [];
 
-    const events = await response.json();
+      const events = await response.json();
     return events || [];
   }, [supabaseUrl, supabaseKey]);
 

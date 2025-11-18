@@ -168,7 +168,7 @@ export function useBridge() {
           if (step.name === 'approve' && step.txHash && !extractedSourceTx) {
             extractedSourceTx = step.txHash;
             setSourceTxHash(step.txHash);
-          }
+            }
         });
       }
 

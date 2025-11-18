@@ -58,8 +58,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Function to get 24h volume for a specific pool
+-- OPTIMIZED: Reads from materialized view instead of scanning all swap_events
+-- Returns 0 if pool has no volume in last 24h
+CREATE OR REPLACE FUNCTION get_pool_volume_24h(pool_address_param TEXT)
+RETURNS TABLE (
+  volume_24h NUMERIC
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    COALESCE(pv.volume_24h, 0) as volume_24h
+  FROM pool_volume_24h pv
+  WHERE LOWER(pv.pool_address) = LOWER(pool_address_param)
+  LIMIT 1;
+  
+  -- If no row found, return 0
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT 0::NUMERIC as volume_24h;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Grant execute permissions (if using RLS)
 GRANT EXECUTE ON FUNCTION get_total_volume_fees(TEXT) TO anon;
 GRANT EXECUTE ON FUNCTION get_daily_volume_fees(TEXT, INTEGER) TO anon;
 GRANT EXECUTE ON FUNCTION get_volume_fees_period(TEXT, INTEGER) TO anon;
+GRANT EXECUTE ON FUNCTION get_pool_volume_24h(TEXT) TO anon;
 

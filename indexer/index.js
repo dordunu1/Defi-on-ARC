@@ -176,6 +176,7 @@ console.log('============================\n');
 const knownPools = new Set();
 let lastProcessedBlock = null;
 let lastMaterializedViewRefresh = null; // Track when we last refreshed materialized views
+let lastPoolVolume24hRefresh = null; // Track when we last refreshed pool_volume_24h (hourly)
 
 /**
  * Fetch all pools from factory
@@ -555,19 +556,37 @@ async function index() {
   // Refresh materialized views every 10 minutes to keep aggregated data up to date
   const now = Date.now();
   const TEN_MINUTES = 10 * 60 * 1000; // 10 minutes in milliseconds
+  const ONE_HOUR = 60 * 60 * 1000; // 1 hour in milliseconds
   
+  // Refresh volume_fees views every 10 minutes
   if (!lastMaterializedViewRefresh || (now - lastMaterializedViewRefresh) >= TEN_MINUTES) {
     try {
-      console.log('🔄 Refreshing materialized views (every 10 minutes)...');
+      console.log('🔄 Refreshing volume_fees materialized views (every 10 minutes)...');
       const { error } = await supabase.rpc('refresh_volume_fees_views');
       if (error) {
-        console.error('Error refreshing materialized views:', error);
+        console.error('Error refreshing volume_fees views:', error);
       } else {
-        console.log('✅ Materialized views refreshed successfully');
+        console.log('✅ Volume_fees views refreshed successfully');
         lastMaterializedViewRefresh = now;
       }
     } catch (error) {
-      console.error('Exception refreshing materialized views:', error);
+      console.error('Exception refreshing volume_fees views:', error);
+    }
+  }
+  
+  // Refresh pool_volume_24h view every 1 hour (24h volume doesn't need frequent updates)
+  if (!lastPoolVolume24hRefresh || (now - lastPoolVolume24hRefresh) >= ONE_HOUR) {
+    try {
+      console.log('🔄 Refreshing pool_volume_24h materialized view (every 1 hour)...');
+      const { error } = await supabase.rpc('refresh_pool_volume_24h');
+      if (error) {
+        console.error('Error refreshing pool_volume_24h view:', error);
+      } else {
+        console.log('✅ Pool_volume_24h view refreshed successfully');
+        lastPoolVolume24hRefresh = now;
+      }
+    } catch (error) {
+      console.error('Exception refreshing pool_volume_24h view:', error);
     }
   }
 }
