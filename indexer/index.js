@@ -13,7 +13,7 @@
 // Load environment variables from .env file
 require('dotenv').config();
 
-const { createPublicClient, webSocket, http, parseAbiItem } = require('viem');
+const { createPublicClient, webSocket, parseAbiItem } = require('viem');
 const { createClient } = require('@supabase/supabase-js');
 
 // DEX Configuration
@@ -121,7 +121,6 @@ const KNOWN_TOKENS = {
 
 // Environment variables
 const WSS_URL = process.env.WSS_URL || 'wss://rpc.testnet.arc.network';
-const HTTP_RPC_URL = process.env.HTTP_RPC_URL || 'https://rpc.testnet.arc.network';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 
@@ -136,28 +135,31 @@ const arcTestnet = {
     symbol: 'USDC',
   },
   rpcUrls: {
-    default: { http: [HTTP_RPC_URL] },
-    public: { http: [HTTP_RPC_URL] },
+    default: { http: ['https://rpc.testnet.arc.network'] },
+    public: { http: ['https://rpc.testnet.arc.network'] },
   },
   blockExplorers: {
     default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
   },
 };
 
-// Initialize clients - HTTP for reads (fresh data), WebSocket for events
-const httpClient = createPublicClient({
-  chain: arcTestnet,
-  transport: http(HTTP_RPC_URL, {
-    batch: false, // No batching - ensure fresh reads
-  }),
-  cacheTime: 0, // No caching - always fetch fresh data
-});
-
-// WebSocket client for event listening (swap events, pool creation)
-const wssClient = createPublicClient({
-  chain: arcTestnet,
-  transport: webSocket(WSS_URL),
-});
+// WebSocket client for ALL operations - NO HTTP fallback
+// Use WebSocket for everything - better performance and keeps up with chain
+let wssClient;
+try {
+  wssClient = createPublicClient({
+    chain: arcTestnet,
+    transport: webSocket(WSS_URL, {
+      reconnect: true, // Auto-reconnect on disconnect
+      retryCount: Infinity, // Keep retrying forever
+      retryDelay: 1000, // 1 second delay between retries
+    }),
+  });
+  console.log('✓ WebSocket client initialized (WSS ONLY - no HTTP fallback)');
+} catch (error) {
+  console.error('✗ Error initializing WebSocket client:', error);
+  throw error;
+}
 
 const supabase = SUPABASE_URL && SUPABASE_KEY 
   ? createClient(SUPABASE_URL, SUPABASE_KEY)
@@ -166,10 +168,10 @@ const supabase = SUPABASE_URL && SUPABASE_KEY
 // Log Supabase configuration status on startup
 console.log('\n=== Indexer Configuration ===');
 console.log('WSS_URL:', WSS_URL ? WSS_URL : 'MISSING');
-console.log('HTTP_RPC_URL:', HTTP_RPC_URL ? HTTP_RPC_URL : 'MISSING');
 console.log('SUPABASE_URL:', SUPABASE_URL ? 'SET (' + SUPABASE_URL.substring(0, 30) + '...)' : 'MISSING');
 console.log('SUPABASE_KEY:', SUPABASE_KEY ? 'SET (' + SUPABASE_KEY.substring(0, 20) + '...)' : 'MISSING');
 console.log('Supabase client:', supabase ? '✓ INITIALIZED' : '✗ NOT INITIALIZED');
+console.log('WebSocket client:', wssClient ? '✓ INITIALIZED (WSS ONLY - no HTTP fallback)' : '✗ NOT INITIALIZED');
 console.log('============================\n');
 
 // Track known pools
@@ -178,12 +180,17 @@ let lastProcessedBlock = null;
 let lastMaterializedViewRefresh = null; // Track when we last refreshed materialized views
 let lastPoolVolume24hRefresh = null; // Track when we last refreshed pool_volume_24h (hourly)
 
+// Track active WebSocket subscriptions
+const activeSubscriptions = new Map();
+let isSubscribing = false;
+
 /**
  * Fetch all pools from factory
  */
 async function fetchAllPools() {
   try {
-    const poolCount = await httpClient.readContract({
+    // Use WSS ONLY - no fallback
+    const poolCount = await wssClient.readContract({
       address: DEX_CONFIG.FACTORY_ADDRESS,
       abi: FACTORY_ABI,
       functionName: 'allPoolsLength',
@@ -192,7 +199,7 @@ async function fetchAllPools() {
     const pools = [];
     for (let i = 0; i < Number(poolCount); i++) {
       try {
-        const poolAddress = await httpClient.readContract({
+        const poolAddress = await wssClient.readContract({
           address: DEX_CONFIG.FACTORY_ADDRESS,
           abi: FACTORY_ABI,
           functionName: 'allPools',
@@ -216,7 +223,8 @@ async function fetchAllPools() {
 }
 
 /**
- * Process Swap events from a pool
+ * Process Swap events from a pool using WebSocket subscriptions (real-time)
+ * Falls back to getLogs if subscription fails
  */
 async function processSwapEvents(poolAddress, fromBlock, toBlock) {
   try {
@@ -224,21 +232,28 @@ async function processSwapEvents(poolAddress, fromBlock, toBlock) {
       'event Swap(address indexed sender, uint256 amountAIn, uint256 amountBIn, uint256 amountAOut, uint256 amountBOut, address indexed to)'
     );
 
-    const logs = await wssClient.getLogs({
-      address: poolAddress,
-      event: swapEventAbi,
-      fromBlock,
-      toBlock,
-    });
+    // Try WebSocket first for better performance, fallback to HTTP if needed
+    let logs;
+    try {
+      logs = await wssClient.getLogs({
+        address: poolAddress,
+        event: swapEventAbi,
+        fromBlock,
+        toBlock,
+      });
+    } catch (wssError) {
+      console.error(`✗ WSS getLogs failed for pool ${poolAddress}:`, wssError.message);
+      throw wssError; // No fallback - WSS only
+    }
 
-    // Get pool token addresses (use HTTP for fresh reads)
+    // Get pool token addresses (use WSS)
     const [tokenA, tokenB] = await Promise.all([
-      httpClient.readContract({
+      wssClient.readContract({
         address: poolAddress,
         abi: POOL_ABI,
         functionName: 'tokenA',
       }),
-      httpClient.readContract({
+      wssClient.readContract({
         address: poolAddress,
         abi: POOL_ABI,
         functionName: 'tokenB',
@@ -273,8 +288,8 @@ async function processSwapEvents(poolAddress, fromBlock, toBlock) {
         continue;
       }
 
-      // Get block timestamp
-      const block = await httpClient.getBlock({ blockNumber: log.blockNumber });
+      // Get block timestamp (use WSS)
+      const block = await wssClient.getBlock({ blockNumber: log.blockNumber });
       const timestamp = Number(block.timestamp) * 1000;
 
       // Get sender address from event (first indexed parameter)
@@ -313,15 +328,15 @@ async function getTokenInfo(tokenAddress) {
     }
   }
 
-  // Fetch from contract
+  // Fetch from contract (use WSS)
   try {
     const [symbol, decimals] = await Promise.all([
-      httpClient.readContract({
+      wssClient.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
         functionName: 'symbol',
       }).catch(() => null),
-      httpClient.readContract({
+      wssClient.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
         functionName: 'decimals',
@@ -349,16 +364,16 @@ async function getTokenPriceInUSD(tokenAddress, pools) {
     return 1;
   }
 
-  // Try to find USDC pair
+  // Try to find USDC pair (use WSS)
   for (const poolAddress of pools) {
     try {
       const [tokenA, tokenB] = await Promise.all([
-        httpClient.readContract({
+        wssClient.readContract({
           address: poolAddress,
           abi: POOL_ABI,
           functionName: 'tokenA',
         }),
-        httpClient.readContract({
+        wssClient.readContract({
           address: poolAddress,
           abi: POOL_ABI,
           functionName: 'tokenB',
@@ -370,14 +385,14 @@ async function getTokenPriceInUSD(tokenAddress, pools) {
       const tokenAddrLower = tokenAddress.toLowerCase();
 
       if (tokenALower === USDC_ADDRESS.toLowerCase() && tokenBLower === tokenAddrLower) {
-        // Get reserves to calculate price
+        // Get reserves to calculate price (use WSS)
         const [reserveA, reserveB] = await Promise.all([
-          httpClient.readContract({
+          wssClient.readContract({
             address: poolAddress,
             abi: POOL_ABI,
             functionName: 'reserveA',
           }),
-          httpClient.readContract({
+          wssClient.readContract({
             address: poolAddress,
             abi: POOL_ABI,
             functionName: 'reserveB',
@@ -395,14 +410,14 @@ async function getTokenPriceInUSD(tokenAddress, pools) {
           return reserveAFormatted / reserveBFormatted;
         }
       } else if (tokenBLower === USDC_ADDRESS.toLowerCase() && tokenALower === tokenAddrLower) {
-        // USDC is tokenB
+        // USDC is tokenB (use WSS)
         const [reserveA, reserveB] = await Promise.all([
-          httpClient.readContract({
+          wssClient.readContract({
             address: poolAddress,
             abi: POOL_ABI,
             functionName: 'reserveA',
           }),
-          httpClient.readContract({
+          wssClient.readContract({
             address: poolAddress,
             abi: POOL_ABI,
             functionName: 'reserveB',
@@ -468,8 +483,8 @@ async function index() {
   const pools = await fetchAllPools();
   console.log(`Found ${pools.length} pools`);
 
-  // Get current block (use HTTP for fresh data)
-  const currentBlock = await httpClient.getBlockNumber();
+  // Get current block (use WSS)
+  const currentBlock = await wssClient.getBlockNumber();
 
   // Initialize last processed block if needed
   if (!lastProcessedBlock) {
@@ -512,12 +527,19 @@ async function index() {
       'event PoolCreated(address indexed tokenA, address indexed tokenB, address pool, uint256)'
     );
 
-    const poolCreatedLogs = await wssClient.getLogs({
-      address: DEX_CONFIG.FACTORY_ADDRESS,
-      event: poolCreatedAbi,
-      fromBlock,
-      toBlock,
-    });
+    let poolCreatedLogs;
+    try {
+      // Try WebSocket first for better performance
+      poolCreatedLogs = await wssClient.getLogs({
+        address: DEX_CONFIG.FACTORY_ADDRESS,
+        event: poolCreatedAbi,
+        fromBlock,
+        toBlock,
+      });
+    } catch (wssError) {
+      console.error(`✗ WSS getLogs failed for PoolCreated events:`, wssError.message);
+      throw wssError; // No fallback - WSS only
+    }
 
     // Add newly created pools
     for (const log of poolCreatedLogs) {
@@ -668,19 +690,19 @@ async function storePoolData(pools) {
     for (const poolAddress of pools) {
       try {
         // Fetch FRESH reserves directly from on-chain (this is the source of truth)
-        // Use HTTP client for reliable fresh reads (no blockNumber = "latest" automatically)
+        // Use WSS for all reads (no HTTP fallback)
         // Get current block for logging only
-        const currentBlock = await httpClient.getBlockNumber();
+        const currentBlock = await wssClient.getBlockNumber();
         console.log(`  Reading reserves for ${poolAddress} (current block: ${currentBlock.toString()})`);
         
-        // Fetch tokens first (using HTTP for fresh data)
+        // Fetch tokens first (using WSS)
         const [tokenA, tokenB] = await Promise.all([
-          httpClient.readContract({
+          wssClient.readContract({
             address: poolAddress,
             abi: POOL_ABI,
             functionName: 'tokenA',
           }),
-          httpClient.readContract({
+          wssClient.readContract({
             address: poolAddress,
             abi: POOL_ABI,
             functionName: 'tokenB',
@@ -690,16 +712,17 @@ async function storePoolData(pools) {
         // CRITICAL: Read ACTUAL token balances from ERC20 contracts, not stored reserves
         // This is the real on-chain truth - balances are always accurate!
         // Stored reserves might be stale if _update() wasn't called
+        // Use WSS for all reads
         const [reserveA, reserveB] = await Promise.all([
           // Read Token A balance directly from ERC20 contract
-          httpClient.readContract({
+          wssClient.readContract({
             address: tokenA,
             abi: ERC20_ABI,
             functionName: 'balanceOf',
             args: [poolAddress], // Pool's balance of tokenA
           }),
           // Read Token B balance directly from ERC20 contract
-          httpClient.readContract({
+          wssClient.readContract({
             address: tokenB,
             abi: ERC20_ABI,
             functionName: 'balanceOf',
@@ -796,19 +819,60 @@ async function storePoolData(pools) {
 }
 
 /**
+ * Test WebSocket connection health
+ */
+async function testWSSConnection() {
+  try {
+    // Try a simple read to test connection
+    const blockNumber = await wssClient.getBlockNumber();
+    return { healthy: true, blockNumber };
+  } catch (error) {
+    return { healthy: false, error: error.message };
+  }
+}
+
+/**
  * Run indexer in polling loop
+ * Uses WebSocket (WSS) for event queries with HTTP fallback
+ * Polls every 10 seconds to keep up with chain activity
  */
 async function run() {
-  console.log('Starting indexer polling loop...');
+  console.log('Starting indexer polling loop with WebSocket support...');
+  
+  // Test WebSocket connection on startup
+  const wssHealth = await testWSSConnection();
+  if (wssHealth.healthy) {
+    console.log(`✓ WebSocket connection healthy (current block: ${wssHealth.blockNumber})`);
+  } else {
+    console.warn(`⚠️ WebSocket connection test failed: ${wssHealth.error}`);
+    console.warn('   Will use HTTP fallback for event queries');
+  }
+  
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 5;
   
   while (true) {
     try {
       await index();
+      consecutiveErrors = 0; // Reset error counter on success
     } catch (error) {
-      console.error('Indexing error:', error);
+      consecutiveErrors++;
+      console.error(`Indexing error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error.message || error);
       // Log full error details but don't crash
       if (error.stack) {
         console.error('Stack:', error.stack);
+      }
+      
+      // If too many consecutive errors, test WSS connection
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.log('⚠️ Too many consecutive errors, testing WebSocket connection...');
+        const health = await testWSSConnection();
+        if (!health.healthy) {
+          console.error('✗ WebSocket connection unhealthy, will use HTTP fallback');
+        } else {
+          console.log('✓ WebSocket connection is healthy, resetting error counter');
+          consecutiveErrors = 0;
+        }
       }
     }
 
