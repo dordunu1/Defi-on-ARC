@@ -121,14 +121,69 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Materialized view for total fees per pool (all-time)
+-- This stores pre-calculated total fees for each pool (0.3% of volume)
+-- Queries read 1 row per pool instead of scanning all swap events
+CREATE MATERIALIZED VIEW IF NOT EXISTS pool_fees_total AS
+SELECT 
+  LOWER(pool_address) as pool_address,
+  COALESCE(SUM(
+    CASE 
+      WHEN LOWER(token_in) = LOWER('0x3600000000000000000000000000000000000000') THEN 
+        (amount_in::NUMERIC / 1000000) * 0.003 -- 0.3% fee on USDC input
+      WHEN LOWER(token_out) = LOWER('0x3600000000000000000000000000000000000000') THEN 
+        (amount_out::NUMERIC / 1000000) * 0.003 -- 0.3% fee on USDC output
+      ELSE 0
+    END
+  ), 0) as total_fees,
+  COALESCE(SUM(
+    CASE 
+      WHEN LOWER(token_in) = LOWER('0x3600000000000000000000000000000000000000') THEN 
+        (amount_in::NUMERIC / 1000000) -- Total volume in USDC
+      WHEN LOWER(token_out) = LOWER('0x3600000000000000000000000000000000000000') THEN 
+        (amount_out::NUMERIC / 1000000) -- Total volume in USDC
+      ELSE 0
+    END
+  ), 0) as total_volume,
+  MAX(timestamp) as last_updated
+FROM swap_events
+WHERE (LOWER(token_in) = LOWER('0x3600000000000000000000000000000000000000') 
+   OR LOWER(token_out) = LOWER('0x3600000000000000000000000000000000000000'))
+GROUP BY LOWER(pool_address);
+
+-- Create index on pool_fees_total for fast lookups
+CREATE INDEX IF NOT EXISTS idx_pool_fees_total_pool_address ON pool_fees_total(pool_address);
+
+-- Function to refresh pool_fees_total view (call this every 24 hours)
+CREATE OR REPLACE FUNCTION refresh_pool_fees_total()
+RETURNS void AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW pool_fees_total;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to refresh all materialized views (volume_fees + pool_volume_24h + pool_fees_total)
+CREATE OR REPLACE FUNCTION refresh_all_materialized_views()
+RETURNS void AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW volume_fees_total;
+  REFRESH MATERIALIZED VIEW volume_fees_daily;
+  REFRESH MATERIALIZED VIEW pool_volume_24h;
+  REFRESH MATERIALIZED VIEW pool_fees_total;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Grant permissions
 GRANT SELECT ON pool_volume_24h TO anon;
+GRANT SELECT ON pool_fees_total TO anon;
 GRANT EXECUTE ON FUNCTION refresh_pool_volume_24h() TO anon;
+GRANT EXECUTE ON FUNCTION refresh_pool_fees_total() TO anon;
 GRANT EXECUTE ON FUNCTION refresh_all_materialized_views() TO anon;
 
 -- Initial refresh to populate the views
 REFRESH MATERIALIZED VIEW volume_fees_total;
 REFRESH MATERIALIZED VIEW volume_fees_daily;
 REFRESH MATERIALIZED VIEW pool_volume_24h;
+REFRESH MATERIALIZED VIEW pool_fees_total;
 
 

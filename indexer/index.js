@@ -178,6 +178,7 @@ const knownPools = new Set();
 let lastProcessedBlock = null;
 let lastMaterializedViewRefresh = null; // Track when we last refreshed materialized views
 let lastPoolVolume24hRefresh = null; // Track when we last refreshed pool_volume_24h (hourly)
+let lastPoolFeesTotalRefresh = null; // Track when we last refreshed pool_fees_total (daily)
 
 
 /**
@@ -585,6 +586,7 @@ async function index() {
   const now = Date.now();
   const TEN_MINUTES = 10 * 60 * 1000; // 10 minutes in milliseconds
   const ONE_HOUR = 60 * 60 * 1000; // 1 hour in milliseconds
+  const ONE_DAY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
   
   // Refresh volume_fees views every 10 minutes
   if (!lastMaterializedViewRefresh || (now - lastMaterializedViewRefresh) >= TEN_MINUTES) {
@@ -615,6 +617,22 @@ async function index() {
       }
     } catch (error) {
       console.error('Exception refreshing pool_volume_24h view:', error);
+    }
+  }
+  
+  // Refresh pool_fees_total view every 24 hours (total fees don't need frequent updates)
+  if (!lastPoolFeesTotalRefresh || (now - lastPoolFeesTotalRefresh) >= ONE_DAY) {
+    try {
+      console.log('🔄 Refreshing pool_fees_total materialized view (every 24 hours)...');
+      const { error } = await supabase.rpc('refresh_pool_fees_total');
+      if (error) {
+        console.error('Error refreshing pool_fees_total view:', error);
+      } else {
+        console.log('✅ Pool_fees_total view refreshed successfully');
+        lastPoolFeesTotalRefresh = now;
+      }
+    } catch (error) {
+      console.error('Exception refreshing pool_fees_total view:', error);
     }
   }
 }

@@ -23,6 +23,7 @@ interface PoolInfo {
   reserveADecimals?: number;
   reserveBDecimals?: number;
   totalLiquidity?: number; // TVL in USD from indexer
+  totalFees?: number; // Total fees earned by the pool (0.3% of volume)
   lastUpdated?: string;
 }
 
@@ -143,6 +144,24 @@ export default function Pools() {
       }
 
       const poolsData = await response.json();
+      
+      // Fetch fees per pool from materialized view
+      const feesResponse = await fetch(`${supabaseUrl}/rest/v1/pool_fees_total?select=pool_address,total_fees`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+      });
+
+      // Create a map of pool_address -> total_fees
+      const feesMap = new Map<string, number>();
+      if (feesResponse.ok) {
+        const feesData = await feesResponse.json();
+        feesData.forEach((fee: any) => {
+          feesMap.set(fee.pool_address.toLowerCase(), parseFloat(fee.total_fees || 0));
+        });
+      }
+
       const poolsList: PoolInfo[] = poolsData.map((pool: any) => ({
         poolAddress: pool.pool_address as Address,
         tokenA: pool.token_a as Address,
@@ -155,6 +174,7 @@ export default function Pools() {
         reserveADecimals: pool.reserve_a_decimals || 18,
         reserveBDecimals: pool.reserve_b_decimals || 18,
         totalLiquidity: pool.total_liquidity ? parseFloat(pool.total_liquidity) : undefined,
+        totalFees: feesMap.get(pool.pool_address.toLowerCase()) || 0,
         lastUpdated: pool.last_updated,
       }));
 
@@ -1134,7 +1154,7 @@ function PoolCard({
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 md:gap-6 w-full sm:w-auto sm:flex-1 sm:max-w-2xl">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 md:gap-6 w-full sm:w-auto sm:flex-1 sm:max-w-2xl">
           <div>
             <p className="text-xs text-gray-500 mb-1">Reserves</p>
             <p className="text-xs sm:text-sm font-bold text-gray-900 break-words">
@@ -1150,6 +1170,12 @@ function PoolCard({
               {poolTVL !== null ? `$${formatNumber(totalLiquidity)}` : formatNumber(totalLiquidity)}
             </p>
             <p className="text-xs text-gray-400">{poolTVL !== null ? 'TVL (USD)' : 'Reserve A + Reserve B'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Total Fees</p>
+            <p className="text-xs sm:text-sm font-bold text-green-600">
+              ${formatNumber((pool.totalFees || 0).toString())}
+            </p>
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">Your Position</p>
