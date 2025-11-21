@@ -1153,14 +1153,14 @@ export default function CreatePool() {
                 </div>
               </div>
             ) : (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-blue-800">
-                    <span className="font-semibold">Note:</span> Only USDC pair pools are allowed. One of the tokens must be USDC.
-                  </p>
-                </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-800">
+                  <span className="font-semibold">Note:</span> Only USDC pair pools are allowed. One of the tokens must be USDC.
+                </p>
               </div>
+            </div>
             )}
 
             {/* Token A and B on same line */}
@@ -2211,23 +2211,23 @@ export default function CreatePool() {
                   <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
                     {unauthorizedModalType === 'usdc' ? (
                       <>
-                        <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                    <p className="text-sm text-gray-700 leading-relaxed mb-3">
                           To create a liquidity pool with USDC, you need a minimum balance of <span className="font-semibold text-orange-600">{MIN_USDC_BALANCE.toLocaleString()} USDC</span>.
-                        </p>
-                        {isConnected && (
-                          <div className="mt-3 pt-3 border-t border-orange-200">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-600">Your USDC Balance:</span>
-                              <span className={`text-sm font-semibold ${parseFloat(usdcBalanceFormatted) >= MIN_USDC_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
-                                {parseFloat(usdcBalanceFormatted).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
-                              </span>
-                            </div>
-                            {parseFloat(usdcBalanceFormatted) < MIN_USDC_BALANCE && (
-                              <div className="mt-2 text-xs text-orange-600">
-                                You need {((MIN_USDC_BALANCE - parseFloat(usdcBalanceFormatted)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} more USDC to create a pool.
-                              </div>
-                            )}
+                    </p>
+                    {isConnected && (
+                      <div className="mt-3 pt-3 border-t border-orange-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Your USDC Balance:</span>
+                          <span className={`text-sm font-semibold ${parseFloat(usdcBalanceFormatted) >= MIN_USDC_BALANCE ? 'text-green-600' : 'text-orange-600'}`}>
+                            {parseFloat(usdcBalanceFormatted).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC
+                          </span>
+                        </div>
+                        {parseFloat(usdcBalanceFormatted) < MIN_USDC_BALANCE && (
+                          <div className="mt-2 text-xs text-orange-600">
+                            You need {((MIN_USDC_BALANCE - parseFloat(usdcBalanceFormatted)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} more USDC to create a pool.
                           </div>
+                        )}
+                      </div>
                         )}
                       </>
                     ) : (
