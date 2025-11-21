@@ -547,11 +547,11 @@ export default function Pools() {
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  // Filter pools with TVL >= 3500 (default view)
+  // Filter pools with TVL >= 10000 (default view)
   const filteredPools = useMemo(() => {
     return pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
-      if (poolTVL < 3500) {
+      if (poolTVL < 10000) {
         return false;
       }
       
@@ -566,11 +566,11 @@ export default function Pools() {
     });
   }, [pools, searchQuery]);
 
-  // Filter pools with TVL < 3500 (low TVL pools - expandable section)
+  // Filter pools with TVL < 10000 (low TVL pools - expandable section)
   const lowTVLPools = useMemo(() => {
     return pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
-      if (poolTVL >= 3500) {
+      if (poolTVL >= 10000) {
         return false;
       }
       
@@ -916,7 +916,7 @@ export default function Pools() {
                     Low TVL Pools ({lowTVLPools.length})
                   </p>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Pools with TVL less than $3,500. When TVL reaches $3,500, they will appear in the default pools list above.
+                    Pools with TVL less than $10,000. When TVL reaches $10,000, they will appear in the default pools list above.
                   </p>
                 </div>
               </div>
