@@ -918,14 +918,20 @@ async function run() {
   }
   
   // Helper function to log time remaining
-  function logTimeRemaining(elapsed) {
+  function logTimeRemaining(elapsed, forceLog = false) {
     const timeRemaining = RESTART_INTERVAL_MS - elapsed;
     const minutesRemaining = Math.floor(timeRemaining / (60 * 1000));
-    const currentInterval = Math.floor(elapsed / (10 * 60 * 1000)); // Log every 10 minutes instead of 30
-    if (minutesRemaining > 0 && minutesRemaining % 10 === 0 && currentInterval !== lastTimeRemainingLog) {
+    const secondsRemaining = Math.floor((timeRemaining % (60 * 1000)) / 1000);
+    const elapsedHours = (elapsed / (60 * 60 * 1000)).toFixed(2);
+    const elapsedMinutes = Math.floor(elapsed / (60 * 1000));
+    
+    // Log every poll cycle (forceLog) or every 5 minutes
+    const currentInterval = Math.floor(elapsed / (5 * 60 * 1000)); // Log every 5 minutes
+    const shouldLog = forceLog || (minutesRemaining > 0 && minutesRemaining % 5 === 0 && currentInterval !== lastTimeRemainingLog);
+    
+    if (shouldLog && minutesRemaining > 0) {
       const hoursRemaining = (minutesRemaining / 60).toFixed(1);
-      const elapsedHours = (elapsed / (60 * 60 * 1000)).toFixed(2);
-      console.log(`⏰ Elapsed: ${elapsedHours}h | Time until restart: ${hoursRemaining}h (${minutesRemaining}m)`);
+      console.log(`⏰ Elapsed: ${elapsedMinutes}m (${elapsedHours}h) | Time until restart: ${minutesRemaining}m ${secondsRemaining}s (${hoursRemaining}h)`);
       lastTimeRemainingLog = currentInterval;
     }
   }
@@ -933,7 +939,7 @@ async function run() {
   while (true) {
     // Check restart time at the start of each loop
     const elapsed = checkRestartTime();
-    logTimeRemaining(elapsed);
+    logTimeRemaining(elapsed, true); // Log on every poll cycle
     
     // Check again right before calling index() to ensure we don't start a long operation
     checkRestartTime();
@@ -942,7 +948,8 @@ async function run() {
       await index();
       
       // Check again after index() completes (in case it took a long time)
-      checkRestartTime();
+      const elapsedAfter = checkRestartTime();
+      logTimeRemaining(elapsedAfter); // Log after index completes
       consecutiveErrors = 0; // Reset error counter on success
     } catch (error) {
       // Check if this is a rate limit error (429)
@@ -1035,11 +1042,10 @@ run().catch((error) => {
   if (error.stack) {
     console.error('Stack trace:', error.stack);
   }
-  // Even on fatal error, try to restart after 30 seconds
-  setTimeout(() => {
-    console.log('🔄 Attempting to restart indexer after error...');
-    run().catch(console.error);
-  }, 30000);
+  // Don't automatically restart - let Railway handle restarts via the restart policy
+  // This prevents premature restarts that interfere with the scheduled 1h50m restart
+  console.error('❌ Indexer stopped. Railway will restart based on restart policy.');
+  process.exit(1); // Exit and let Railway restart it
 });
 
 module.exports = { index, run };
