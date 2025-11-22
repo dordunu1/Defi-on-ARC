@@ -7,6 +7,7 @@ import { createPublicClient, http, formatUnits, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 import confetti from 'canvas-confetti';
 import { useBridge, type BridgeToken, CHAIN_TOKENS, SEPOLIA_CHAIN_ID, ARC_CHAIN_ID } from '../hooks/useBridge';
+import { ARC_RPC_URLS } from '../config/wagmi';
 
 interface BridgeModalProps {
   isOpen?: boolean;
@@ -119,14 +120,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             symbol: 'USDC',
           },
           rpcUrls: {
-            default: { http: ['https://rpc.testnet.arc.network'] },
-            public: { http: ['https://rpc.testnet.arc.network'] },
+            default: { http: ARC_RPC_URLS },
+            public: { http: ARC_RPC_URLS },
           },
           blockExplorers: {
             default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
           },
         },
-        transport: http('https://rpc.testnet.arc.network', {
+        transport: http(ARC_RPC_URLS[0], {
           retryCount: 2,
           timeout: 8000,
         }),
@@ -209,14 +210,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             symbol: 'USDC',
           },
           rpcUrls: {
-            default: { http: ['https://rpc.testnet.arc.network'] },
-            public: { http: ['https://rpc.testnet.arc.network'] },
+            default: { http: ARC_RPC_URLS },
+            public: { http: ARC_RPC_URLS },
           },
           blockExplorers: {
             default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
           },
         },
-        transport: http('https://rpc.testnet.arc.network', {
+        transport: http(ARC_RPC_URLS[0], {
           retryCount: 2,
           timeout: 8000,
         }),

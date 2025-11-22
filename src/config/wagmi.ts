@@ -1,12 +1,22 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { sepolia } from 'viem/chains';
 
-// Use Arc Testnet RPC endpoint
-const ARC_RPC_URL = 'https://rpc.testnet.arc.network';
-
 // Multiple Sepolia RPC endpoints for better reliability and rate limit handling
 // Free tier RPCs have rate limits, so we use multiple fallbacks
 const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || '';
+
+// Arc Testnet RPC endpoints - use Alchemy if available, with fallback to public RPC
+const ARC_RPC_URLS = ALCHEMY_API_KEY
+  ? [
+      `https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, // Alchemy (primary - higher rate limits)
+      'https://rpc.testnet.arc.network', // Public Arc RPC (fallback)
+    ]
+  : [
+      'https://rpc.testnet.arc.network', // Public Arc RPC (only option if no Alchemy key)
+    ];
+
+// Use first RPC as primary
+const ARC_RPC_URL = ARC_RPC_URLS[0];
 const SEPOLIA_RPC_URLS = ALCHEMY_API_KEY
   ? [
       'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode (primary - no rate limits)
@@ -46,8 +56,8 @@ const arcTestnet = {
     symbol: 'USDC',
   },
   rpcUrls: {
-    default: { http: [ARC_RPC_URL] },
-    public: { http: [ARC_RPC_URL] },
+    default: { http: ARC_RPC_URLS },
+    public: { http: ARC_RPC_URLS },
   },
   blockExplorers: {
     default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
@@ -59,4 +69,7 @@ export const config = getDefaultConfig({
   projectId: 'ed1deffe285a3c80426c7502b6b773dd', // Replace with your WalletConnect Project ID
   chains: [sepoliaWithCustomRpc, arcTestnet],
 });
+
+// Export Arc RPC URLs for use in other components
+export { ARC_RPC_URLS, ARC_RPC_URL };
 
