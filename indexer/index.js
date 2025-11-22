@@ -902,30 +902,47 @@ async function run() {
   const MAX_CONSECUTIVE_ERRORS = 5;
   let lastTimeRemainingLog = 0;
   
-  while (true) {
-    // Check if 1 hour 50 minutes have elapsed - if so, gracefully exit for restart
+  // Helper function to check if restart is needed
+  function checkRestartTime() {
     const elapsed = Date.now() - startTime;
     if (elapsed >= RESTART_INTERVAL_MS) {
       const hours = (elapsed / (60 * 60 * 1000)).toFixed(2);
-      console.log(`\n⏰ 1 hour 50 minute restart interval reached (ran for ${hours} hours)`);
+      const minutes = (elapsed / (60 * 1000)).toFixed(0);
+      console.log(`\n⏰ 1 hour 50 minute restart interval reached (ran for ${hours} hours / ${minutes} minutes)`);
       console.log('🔄 Gracefully shutting down for automatic restart...');
       console.log('   Railway will automatically restart this service.');
       console.log('   (Using exit code 1 to trigger Railway\'s ON_FAILURE restart policy)\n');
       process.exit(1); // Exit with code 1 to trigger Railway's ON_FAILURE restart policy
     }
-    
-    // Log time remaining every 30 minutes
+    return elapsed;
+  }
+  
+  // Helper function to log time remaining
+  function logTimeRemaining(elapsed) {
     const timeRemaining = RESTART_INTERVAL_MS - elapsed;
     const minutesRemaining = Math.floor(timeRemaining / (60 * 1000));
-    const currentInterval = Math.floor(elapsed / (30 * 60 * 1000));
-    if (minutesRemaining > 0 && minutesRemaining % 30 === 0 && currentInterval !== lastTimeRemainingLog) {
+    const currentInterval = Math.floor(elapsed / (10 * 60 * 1000)); // Log every 10 minutes instead of 30
+    if (minutesRemaining > 0 && minutesRemaining % 10 === 0 && currentInterval !== lastTimeRemainingLog) {
       const hoursRemaining = (minutesRemaining / 60).toFixed(1);
-      console.log(`⏰ Time until restart: ${hoursRemaining} hours (${minutesRemaining} minutes)`);
+      const elapsedHours = (elapsed / (60 * 60 * 1000)).toFixed(2);
+      console.log(`⏰ Elapsed: ${elapsedHours}h | Time until restart: ${hoursRemaining}h (${minutesRemaining}m)`);
       lastTimeRemainingLog = currentInterval;
     }
+  }
+  
+  while (true) {
+    // Check restart time at the start of each loop
+    const elapsed = checkRestartTime();
+    logTimeRemaining(elapsed);
+    
+    // Check again right before calling index() to ensure we don't start a long operation
+    checkRestartTime();
     
     try {
       await index();
+      
+      // Check again after index() completes (in case it took a long time)
+      checkRestartTime();
       consecutiveErrors = 0; // Reset error counter on success
     } catch (error) {
       // Check if this is a rate limit error (429)
@@ -935,8 +952,16 @@ async function run() {
         console.warn('   This is expected when hitting daily RPC limits. The indexer will continue after the wait.');
         
         // Wait 5 minutes before retrying (rate limits usually reset daily)
+        // But check restart time periodically during the wait
         console.log('⏳ Waiting 5 minutes before next attempt...');
-        await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+        const waitStart = Date.now();
+        const waitDuration = 5 * 60 * 1000; // 5 minutes
+        const checkInterval = 30 * 1000; // Check every 30 seconds
+        
+        while (Date.now() - waitStart < waitDuration) {
+          checkRestartTime(); // Check if we need to restart during the wait
+          await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, waitDuration - (Date.now() - waitStart))));
+        }
         console.log('⏳ Retrying after rate limit wait...');
         continue; // Skip the normal 10-second wait below
       } else {
@@ -962,9 +987,16 @@ async function run() {
       }
     }
 
-    // Wait 10 seconds before next poll
+    // Wait 10 seconds before next poll (check restart time during wait)
     console.log('Waiting 10 seconds before next poll...');
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    const waitStart = Date.now();
+    const waitDuration = 10000; // 10 seconds
+    const checkInterval = 5000; // Check every 5 seconds
+    
+    while (Date.now() - waitStart < waitDuration) {
+      checkRestartTime(); // Check if we need to restart during the wait
+      await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, waitDuration - (Date.now() - waitStart))));
+    }
   }
 }
 
