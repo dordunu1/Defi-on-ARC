@@ -820,6 +820,11 @@ async function storePoolData(pools) {
           }
         }
       } catch (error) {
+        // If it's a rate limit error, re-throw it so it's caught by the main error handler
+        if (isRateLimitError(error)) {
+          console.error(`Rate limit error while storing pool data for ${poolAddress}:`, error.message || error);
+          throw error; // Re-throw to trigger rate limit handling in main loop
+        }
         console.error(`Error storing pool data for ${poolAddress}:`, error);
       }
     }
@@ -832,6 +837,11 @@ async function storePoolData(pools) {
       console.log(`✓ Successfully updated pools in Supabase (${data?.length || 0} pools currently in database)`);
     }
   } catch (error) {
+    // If it's a rate limit error, re-throw it so it's caught by the main error handler
+    if (isRateLimitError(error)) {
+      console.error('✗ Rate limit error in storePoolData - will wait and retry');
+      throw error; // Re-throw to trigger rate limit handling in main loop
+    }
     console.error('✗ CRITICAL ERROR in storePoolData:', error);
     if (error.message) {
       console.error('Error message:', error.message);
@@ -856,17 +866,29 @@ async function testRPCConnection() {
 }
 
 /**
+ * Check if an error is a rate limit error (429)
+ */
+function isRateLimitError(error) {
+  return (
+    error.status === 429 || 
+    error.code === 429 ||
+    (error.message && (error.message.includes('429') || error.message.includes('rate limit') || error.message.includes('request limit'))) ||
+    (error.details && (error.details.includes('429') || error.details.includes('rate limit') || error.details.includes('request limit')))
+  );
+}
+
+/**
  * Run indexer in polling loop
  * Uses HTTP RPC for all operations
  * Polls every 10 seconds to keep up with chain activity
- * Automatically restarts every 2 hours to prevent RPC errors
+ * Automatically restarts every 1 hour 50 minutes to prevent RPC errors
  */
 async function run() {
   const startTime = Date.now();
-  const RESTART_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+  const RESTART_INTERVAL_MS = 110 * 60 * 1000; // 1 hour 50 minutes in milliseconds
   
   console.log('Starting indexer polling loop with HTTP RPC...');
-  console.log(`⏰ Scheduled restart in 2 hours (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
+  console.log(`⏰ Scheduled restart in 1 hour 50 minutes (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
   
   // Test HTTP RPC connection on startup
   const rpcHealth = await testRPCConnection();
@@ -881,11 +903,11 @@ async function run() {
   let lastTimeRemainingLog = 0;
   
   while (true) {
-    // Check if 2 hours have elapsed - if so, gracefully exit for restart
+    // Check if 1 hour 50 minutes have elapsed - if so, gracefully exit for restart
     const elapsed = Date.now() - startTime;
     if (elapsed >= RESTART_INTERVAL_MS) {
       const hours = (elapsed / (60 * 60 * 1000)).toFixed(2);
-      console.log(`\n⏰ 2-hour restart interval reached (ran for ${hours} hours)`);
+      console.log(`\n⏰ 1 hour 50 minute restart interval reached (ran for ${hours} hours)`);
       console.log('🔄 Gracefully shutting down for automatic restart...');
       console.log('   Railway will automatically restart this service.');
       console.log('   (Using exit code 1 to trigger Railway\'s ON_FAILURE restart policy)\n');
@@ -907,13 +929,7 @@ async function run() {
       consecutiveErrors = 0; // Reset error counter on success
     } catch (error) {
       // Check if this is a rate limit error (429)
-      const isRateLimitError = 
-        error.status === 429 || 
-        error.code === 429 ||
-        (error.message && (error.message.includes('429') || error.message.includes('rate limit') || error.message.includes('request limit'))) ||
-        (error.details && (error.details.includes('429') || error.details.includes('rate limit') || error.details.includes('request limit')));
-      
-      if (isRateLimitError) {
+      if (isRateLimitError(error)) {
         // Don't count rate limit errors as consecutive errors
         console.warn('⚠️ Rate limit reached (429) - waiting 5 minutes before retry...');
         console.warn('   This is expected when hitting daily RPC limits. The indexer will continue after the wait.');
