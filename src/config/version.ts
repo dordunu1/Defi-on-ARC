@@ -1,3 +1,3 @@
 // App version - update this when releasing a new version
-export const APP_VERSION = 'patch';
-export const BUILD_TIME = '2025-11-22T05:10:57.510Z';
+export const APP_VERSION = '2.3.16';
+export const BUILD_TIME = '2025-11-22T05:11:18.326Z';
