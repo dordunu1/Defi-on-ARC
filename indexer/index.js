@@ -887,8 +887,9 @@ async function run() {
       const hours = (elapsed / (60 * 60 * 1000)).toFixed(2);
       console.log(`\n⏰ 2-hour restart interval reached (ran for ${hours} hours)`);
       console.log('🔄 Gracefully shutting down for automatic restart...');
-      console.log('   Railway will automatically restart this service.\n');
-      process.exit(0); // Exit gracefully - Railway will restart
+      console.log('   Railway will automatically restart this service.');
+      console.log('   (Using exit code 1 to trigger Railway\'s ON_FAILURE restart policy)\n');
+      process.exit(1); // Exit with code 1 to trigger Railway's ON_FAILURE restart policy
     }
     
     // Log time remaining every 30 minutes
@@ -905,27 +906,47 @@ async function run() {
       await index();
       consecutiveErrors = 0; // Reset error counter on success
     } catch (error) {
-      consecutiveErrors++;
-      console.error(`Indexing error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error.message || error);
-      // Log full error details but don't crash
-      if (error.stack) {
-        console.error('Stack:', error.stack);
-      }
+      // Check if this is a rate limit error (429)
+      const isRateLimitError = 
+        error.status === 429 || 
+        error.code === 429 ||
+        (error.message && (error.message.includes('429') || error.message.includes('rate limit') || error.message.includes('request limit'))) ||
+        (error.details && (error.details.includes('429') || error.details.includes('rate limit') || error.details.includes('request limit')));
       
-      // If too many consecutive errors, test RPC connection
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log('⚠️ Too many consecutive errors, testing HTTP RPC connection...');
-        const health = await testRPCConnection();
-        if (!health.healthy) {
-          console.error('✗ HTTP RPC connection unhealthy');
-        } else {
-          console.log('✓ HTTP RPC connection is healthy, resetting error counter');
-          consecutiveErrors = 0;
+      if (isRateLimitError) {
+        // Don't count rate limit errors as consecutive errors
+        console.warn('⚠️ Rate limit reached (429) - waiting 5 minutes before retry...');
+        console.warn('   This is expected when hitting daily RPC limits. The indexer will continue after the wait.');
+        
+        // Wait 5 minutes before retrying (rate limits usually reset daily)
+        console.log('⏳ Waiting 5 minutes before next attempt...');
+        await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+        console.log('⏳ Retrying after rate limit wait...');
+        continue; // Skip the normal 10-second wait below
+      } else {
+        // Only count non-rate-limit errors
+        consecutiveErrors++;
+        console.error(`Indexing error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error.message || error);
+        // Log full error details but don't crash
+        if (error.stack) {
+          console.error('Stack:', error.stack);
+        }
+        
+        // If too many consecutive errors, test RPC connection
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.log('⚠️ Too many consecutive errors, testing HTTP RPC connection...');
+          const health = await testRPCConnection();
+          if (!health.healthy) {
+            console.error('✗ HTTP RPC connection unhealthy');
+          } else {
+            console.log('✓ HTTP RPC connection is healthy, resetting error counter');
+            consecutiveErrors = 0;
+          }
         }
       }
     }
 
-    // Wait 10 seconds before next poll (don't restart, just wait)
+    // Wait 10 seconds before next poll
     console.log('Waiting 10 seconds before next poll...');
     await new Promise(resolve => setTimeout(resolve, 10000));
   }
