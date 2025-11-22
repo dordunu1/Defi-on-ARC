@@ -20,7 +20,18 @@ import { useVersionCheck } from './hooks/useVersionCheck';
 import { Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
 
-const queryClient = new QueryClient();
+// Configure QueryClient with defaults to reduce RPC calls and rate limiting
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false, // Disable auto-refetch on window focus to reduce RPC calls
+      staleTime: 30000, // Consider data fresh for 30 seconds (default)
+      refetchInterval: false, // Disable automatic refetching by default
+      retry: 2, // Retry failed requests 2 times
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    },
+  },
+});
 
 // MAINTENANCE MODE: Controlled by environment variable VITE_MAINTENANCE_MODE
 // Set to "true" in .env to enable maintenance page, "false" or omit to go live

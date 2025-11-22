@@ -99,14 +99,15 @@ export default function Pools() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-  // Get pool count
-  const { data: poolCount } = useReadContract({
-    address: DEX_CONFIG.FACTORY_ADDRESS as Address,
-    abi: FACTORY_ABI,
-    functionName: 'allPoolsLength',
-  });
+  // Get pool count - disabled to reduce RPC calls (we get pool count from Supabase)
+  // const { data: poolCount } = useReadContract({
+  //   address: DEX_CONFIG.FACTORY_ADDRESS as Address,
+  //   abi: FACTORY_ABI,
+  //   functionName: 'allPoolsLength',
+  // });
 
-  const poolCountNum = poolCount ? Number(poolCount) : 0;
+  // const poolCountNum = poolCount ? Number(poolCount) : 0;
+  const poolCountNum = pools.length; // Use count from Supabase data instead
   const publicClient = usePublicClient();
 
   // Clear any cached pool data (no longer using cache - always fetch fresh from RPC)
@@ -219,42 +220,21 @@ export default function Pools() {
         // If this pool matches our token
         if (otherToken === tokenAddrLower) {
           try {
-            // Read actual token balances from ERC20 contracts (source of truth)
-            const [reserveA, reserveB] = await Promise.all([
-              publicClient!.readContract({
-                address: pool.tokenA,
-                abi: ERC20_ABI,
-                functionName: 'balanceOf',
-                args: [pool.poolAddress], // Pool's balance of tokenA
-              }),
-              publicClient!.readContract({
-                address: pool.tokenB,
-                abi: ERC20_ABI,
-                functionName: 'balanceOf',
-                args: [pool.poolAddress], // Pool's balance of tokenB
-              }),
-            ]);
+            // Use reserves from Supabase (indexer data) - no RPC calls needed!
+            if (pool.reserveA && pool.reserveB && pool.reserveADecimals && pool.reserveBDecimals) {
+              const reserveAFormatted = formatUnits(BigInt(pool.reserveA), pool.reserveADecimals);
+              const reserveBFormatted = formatUnits(BigInt(pool.reserveB), pool.reserveBDecimals);
 
-            const tokenADecimals = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === pool.tokenA.toLowerCase()
-            )?.[1]?.decimals || 18;
-
-            const tokenBDecimals = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === pool.tokenB.toLowerCase()
-            )?.[1]?.decimals || 18;
-
-            const reserveAFormatted = formatUnits(reserveA as bigint, tokenADecimals);
-            const reserveBFormatted = formatUnits(reserveB as bigint, tokenBDecimals);
-
-            // Calculate price: Price = USDC reserves / Token reserves
-            // If tokenA is USDC, price of tokenB = reserveA (USDC) / reserveB (token)
-            // If tokenB is USDC, price of tokenA = reserveB (USDC) / reserveA (token)
-            if (tokenA === usdcAddress) {
-              const price = parseFloat(reserveAFormatted) / parseFloat(reserveBFormatted);
-              return price || 0;
-            } else {
-              const price = parseFloat(reserveBFormatted) / parseFloat(reserveAFormatted);
-              return price || 0;
+              // Calculate price: Price = USDC reserves / Token reserves
+              // If tokenA is USDC, price of tokenB = reserveA (USDC) / reserveB (token)
+              // If tokenB is USDC, price of tokenA = reserveB (USDC) / reserveA (token)
+              if (tokenA === usdcAddress) {
+                const price = parseFloat(reserveAFormatted) / parseFloat(reserveBFormatted);
+                return price || 0;
+              } else {
+                const price = parseFloat(reserveBFormatted) / parseFloat(reserveAFormatted);
+                return price || 0;
+              }
             }
           } catch (error) {
             console.error(`Error calculating price for token ${tokenAddress}:`, error);
@@ -279,45 +259,24 @@ export default function Pools() {
         const intermediatePrice = await getTokenPriceInUSD(intermediateToken as Address, allPools);
         if (intermediatePrice > 0) {
           try {
-            // Read actual token balances from ERC20 contracts (source of truth)
-            const [reserveA, reserveB] = await Promise.all([
-              publicClient!.readContract({
-                address: pool.tokenA,
-                abi: ERC20_ABI,
-                functionName: 'balanceOf',
-                args: [pool.poolAddress], // Pool's balance of tokenA
-              }),
-              publicClient!.readContract({
-                address: pool.tokenB,
-                abi: ERC20_ABI,
-                functionName: 'balanceOf',
-                args: [pool.poolAddress], // Pool's balance of tokenB
-              }),
-            ]);
+            // Use reserves from Supabase (indexer data) - no RPC calls needed!
+            if (pool.reserveA && pool.reserveB && pool.reserveADecimals && pool.reserveBDecimals) {
+              const reserveAFormatted = formatUnits(BigInt(pool.reserveA), pool.reserveADecimals);
+              const reserveBFormatted = formatUnits(BigInt(pool.reserveB), pool.reserveBDecimals);
 
-            const tokenADecimals = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === pool.tokenA.toLowerCase()
-            )?.[1]?.decimals || 18;
+              // Calculate price relative to intermediate token
+              let priceRelativeToIntermediate = 0;
+              if (tokenA === tokenAddrLower) {
+                // Our token is tokenA, price = reserveB / reserveA (in intermediate tokens)
+                priceRelativeToIntermediate = parseFloat(reserveBFormatted) / parseFloat(reserveAFormatted);
+              } else {
+                // Our token is tokenB, price = reserveA / reserveB (in intermediate tokens)
+                priceRelativeToIntermediate = parseFloat(reserveAFormatted) / parseFloat(reserveBFormatted);
+              }
 
-            const tokenBDecimals = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === pool.tokenB.toLowerCase()
-            )?.[1]?.decimals || 18;
-
-            const reserveAFormatted = formatUnits(reserveA as bigint, tokenADecimals);
-            const reserveBFormatted = formatUnits(reserveB as bigint, tokenBDecimals);
-
-            // Calculate price relative to intermediate token
-            let priceRelativeToIntermediate = 0;
-            if (tokenA === tokenAddrLower) {
-              // Our token is tokenA, price = reserveB / reserveA (in intermediate tokens)
-              priceRelativeToIntermediate = parseFloat(reserveBFormatted) / parseFloat(reserveAFormatted);
-            } else {
-              // Our token is tokenB, price = reserveA / reserveB (in intermediate tokens)
-              priceRelativeToIntermediate = parseFloat(reserveAFormatted) / parseFloat(reserveBFormatted);
+              // Convert to USD by multiplying by intermediate token price
+              return priceRelativeToIntermediate * intermediatePrice;
             }
-
-            // Convert to USD by multiplying by intermediate token price
-            return priceRelativeToIntermediate * intermediatePrice;
           } catch (error) {
             console.error(`Error calculating indirect price for token ${tokenAddress}:`, error);
             continue;
@@ -329,7 +288,7 @@ export default function Pools() {
     // No pricing route found - return 0 to indicate unknown price
     console.warn(`Could not find price for token ${tokenAddress} - no USDC pair or indirect route found`);
     return 0;
-  }, [publicClient]);
+  }, []); // No longer depends on publicClient since we use Supabase data
 
   // Fetch metrics from Supabase - OPTIMIZED: Uses materialized views for 1000x faster queries
   // Materialized views are pre-aggregated and refreshed every 10 minutes by the indexer
@@ -1071,19 +1030,30 @@ function PoolCard({
   const poolTVL = pool.totalLiquidity || null;
 
   // Only make RPC calls for user-specific data (LP balance, total supply)
+  // Add rate limiting: disable auto-refetch on focus, increase stale time, reduce refetch interval
   const { data: lpBalance } = useReadContract({
     address: pool.poolAddress,
     abi: POOL_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
-    query: { enabled: !!pool.poolAddress && !!address && isConnected },
+    query: { 
+      enabled: !!pool.poolAddress && !!address && isConnected,
+      refetchOnWindowFocus: false, // Disable auto-refetch on focus to reduce RPC calls
+      staleTime: 30000, // Consider data fresh for 30 seconds
+      refetchInterval: 60000, // Only refetch every 60 seconds
+    },
   });
 
   const { data: totalSupply } = useReadContract({
     address: pool.poolAddress,
     abi: POOL_ABI,
     functionName: 'totalSupply',
-    query: { enabled: !!pool.poolAddress },
+    query: { 
+      enabled: !!pool.poolAddress,
+      refetchOnWindowFocus: false, // Disable auto-refetch on focus to reduce RPC calls
+      staleTime: 60000, // Consider data fresh for 60 seconds (totalSupply changes less frequently)
+      refetchInterval: 120000, // Only refetch every 2 minutes
+    },
   });
 
   const lpBalanceStr = lpBalance ? formatUnits(lpBalance, 18) : '0';
