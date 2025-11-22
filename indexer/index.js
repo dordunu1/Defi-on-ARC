@@ -859,9 +859,14 @@ async function testRPCConnection() {
  * Run indexer in polling loop
  * Uses HTTP RPC for all operations
  * Polls every 10 seconds to keep up with chain activity
+ * Automatically restarts every 2 hours to prevent RPC errors
  */
 async function run() {
+  const startTime = Date.now();
+  const RESTART_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+  
   console.log('Starting indexer polling loop with HTTP RPC...');
+  console.log(`⏰ Scheduled restart in 2 hours (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
   
   // Test HTTP RPC connection on startup
   const rpcHealth = await testRPCConnection();
@@ -873,8 +878,29 @@ async function run() {
   
   let consecutiveErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 5;
+  let lastTimeRemainingLog = 0;
   
   while (true) {
+    // Check if 2 hours have elapsed - if so, gracefully exit for restart
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= RESTART_INTERVAL_MS) {
+      const hours = (elapsed / (60 * 60 * 1000)).toFixed(2);
+      console.log(`\n⏰ 2-hour restart interval reached (ran for ${hours} hours)`);
+      console.log('🔄 Gracefully shutting down for automatic restart...');
+      console.log('   Railway will automatically restart this service.\n');
+      process.exit(0); // Exit gracefully - Railway will restart
+    }
+    
+    // Log time remaining every 30 minutes
+    const timeRemaining = RESTART_INTERVAL_MS - elapsed;
+    const minutesRemaining = Math.floor(timeRemaining / (60 * 1000));
+    const currentInterval = Math.floor(elapsed / (30 * 60 * 1000));
+    if (minutesRemaining > 0 && minutesRemaining % 30 === 0 && currentInterval !== lastTimeRemainingLog) {
+      const hoursRemaining = (minutesRemaining / 60).toFixed(1);
+      console.log(`⏰ Time until restart: ${hoursRemaining} hours (${minutesRemaining} minutes)`);
+      lastTimeRemainingLog = currentInterval;
+    }
+    
     try {
       await index();
       consecutiveErrors = 0; // Reset error counter on success
