@@ -923,7 +923,6 @@ async function triggerRailwayRedeploy() {
         headers: {
           'Authorization': `Bearer ${RAILWAY_API_TOKEN}`,
           'Content-Type': 'application/json',
-          'Content-Length': data.length,
         },
       };
 
