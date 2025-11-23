@@ -880,20 +880,39 @@ async function testRPCConnection() {
 }
 
 /**
- * Trigger a Railway redeploy via API
- * Requires RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID
+ * Trigger a Railway redeploy via GraphQL API
+ * Requires RAILWAY_API_TOKEN and RAILWAY_SERVICE_ID
+ * Railway uses GraphQL API, not REST
  */
 async function triggerRailwayRedeploy() {
-  if (!RAILWAY_API_TOKEN || !RAILWAY_PROJECT_ID || !RAILWAY_SERVICE_ID) {
+  if (!RAILWAY_API_TOKEN || !RAILWAY_SERVICE_ID) {
     console.warn('⚠️ Railway API credentials not set - cannot trigger redeploy');
-    console.warn('   Set RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID environment variables');
+    console.warn('   Set RAILWAY_API_TOKEN and RAILWAY_SERVICE_ID environment variables');
     return false;
   }
 
   try {
-    // Railway API endpoint for creating a new deployment (redeploy)
-    const url = `https://api.railway.app/v1/services/${RAILWAY_SERVICE_ID}/deployments`;
-    const data = JSON.stringify({});
+    // Railway GraphQL API endpoint
+    const url = 'https://backboard.railway.app/graphql/v1';
+    
+    // GraphQL mutation to trigger a new deployment (redeploy)
+    const graphqlMutation = {
+      query: `
+        mutation deploymentCreate($input: DeploymentCreateInput!) {
+          deploymentCreate(input: $input) {
+            id
+            status
+          }
+        }
+      `,
+      variables: {
+        input: {
+          serviceId: RAILWAY_SERVICE_ID,
+        }
+      }
+    };
+
+    const data = JSON.stringify(graphqlMutation);
 
     return new Promise((resolve, reject) => {
       const options = {
@@ -912,8 +931,24 @@ async function triggerRailwayRedeploy() {
         });
         res.on('end', () => {
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            console.log('✅ Railway redeploy triggered successfully');
-            resolve(true);
+            try {
+              const jsonResponse = JSON.parse(responseData);
+              if (jsonResponse.errors) {
+                console.error(`❌ Railway GraphQL errors:`, JSON.stringify(jsonResponse.errors, null, 2));
+                resolve(false);
+              } else if (jsonResponse.data && jsonResponse.data.deploymentCreate) {
+                console.log('✅ Railway redeploy triggered successfully');
+                console.log(`   Deployment ID: ${jsonResponse.data.deploymentCreate.id}`);
+                resolve(true);
+              } else {
+                console.error(`❌ Unexpected Railway API response:`, responseData);
+                resolve(false);
+              }
+            } catch (parseError) {
+              console.error(`❌ Error parsing Railway API response:`, parseError);
+              console.error(`   Response:`, responseData);
+              resolve(false);
+            }
           } else {
             console.error(`❌ Railway API error: ${res.statusCode} - ${responseData}`);
             resolve(false);
@@ -995,14 +1030,14 @@ async function run() {
       console.log(`\n⏰ ${intervalMinutes} minute interval reached (ran for ${hours} hours / ${minutes} minutes)`);
       
       // Try to trigger Railway redeploy (full redeploy, not just restart)
-      console.log('🔄 Attempting to trigger Railway redeploy...');
+      console.log('🔄 Attempting to trigger Railway redeploy (full rebuild)...');
       const redeployTriggered = await triggerRailwayRedeploy();
       
       if (redeployTriggered) {
-        console.log('✅ Redeploy triggered - Railway will redeploy the service');
+        console.log('✅ Redeploy triggered - Railway will rebuild and redeploy the service');
         console.log('   Exiting now - Railway will handle the redeploy\n');
       } else {
-        console.log('⚠️ Could not trigger redeploy via API - falling back to exit/restart');
+        console.log('⚠️ Could not trigger redeploy via API - falling back to exit');
         console.log('   Railway will restart this service automatically.\n');
       }
       
