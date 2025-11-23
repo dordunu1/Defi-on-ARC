@@ -127,6 +127,7 @@ const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 const RAILWAY_API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
 const RAILWAY_PROJECT_ID = process.env.RAILWAY_PROJECT_ID || '';
 const RAILWAY_SERVICE_ID = process.env.RAILWAY_SERVICE_ID || '';
+const RAILWAY_ENVIRONMENT_ID = process.env.RAILWAY_ENVIRONMENT_ID || '';
 
 // Arc Testnet chain config
 const arcTestnet = {
@@ -881,27 +882,27 @@ async function testRPCConnection() {
 
 /**
  * Trigger a Railway redeploy via GraphQL API
- * Requires RAILWAY_API_TOKEN and RAILWAY_SERVICE_ID
- * Railway uses GraphQL API, not REST
+ * Requires RAILWAY_API_TOKEN, RAILWAY_SERVICE_ID, and RAILWAY_ENVIRONMENT_ID
+ * Railway uses GraphQL API - use serviceInstanceDeploy mutation for full redeploy
  */
 async function triggerRailwayRedeploy() {
-  if (!RAILWAY_API_TOKEN || !RAILWAY_SERVICE_ID) {
+  if (!RAILWAY_API_TOKEN || !RAILWAY_SERVICE_ID || !RAILWAY_ENVIRONMENT_ID) {
     console.warn('⚠️ Railway API credentials not set - cannot trigger redeploy');
-    console.warn('   Set RAILWAY_API_TOKEN and RAILWAY_SERVICE_ID environment variables');
+    console.warn('   Set RAILWAY_API_TOKEN, RAILWAY_SERVICE_ID, and RAILWAY_ENVIRONMENT_ID environment variables');
+    console.warn('   Note: RAILWAY_ENVIRONMENT_ID is automatically provided by Railway');
     return false;
   }
 
   try {
-    // Try Railway GraphQL API endpoint
-    // Railway uses GraphQL at backboard.railway.app
+    // Railway GraphQL API endpoint
     const url = 'https://backboard.railway.app/graphql/v1';
     
-    // GraphQL mutation to trigger a new deployment (redeploy)
-    // Try different possible mutation names
+    // Use serviceInstanceDeploy mutation for full redeploy
+    // This triggers a complete rebuild and redeploy of the service
     const graphqlMutation = {
       query: `
-        mutation deploymentCreate($serviceId: String!) {
-          deploymentCreate(serviceId: $serviceId) {
+        mutation serviceInstanceDeploy($serviceId: String!, $environmentId: String!) {
+          serviceInstanceDeploy(serviceId: $serviceId, environmentId: $environmentId) {
             id
             status
           }
@@ -909,6 +910,7 @@ async function triggerRailwayRedeploy() {
       `,
       variables: {
         serviceId: RAILWAY_SERVICE_ID,
+        environmentId: RAILWAY_ENVIRONMENT_ID,
       }
     };
 
@@ -936,9 +938,15 @@ async function triggerRailwayRedeploy() {
               if (jsonResponse.errors) {
                 console.error(`❌ Railway GraphQL errors:`, JSON.stringify(jsonResponse.errors, null, 2));
                 resolve(false);
-              } else if (jsonResponse.data && jsonResponse.data.deploymentCreate) {
+              } else if (jsonResponse.data && jsonResponse.data.serviceInstanceDeploy) {
+                const deployResult = jsonResponse.data.serviceInstanceDeploy;
                 console.log('✅ Railway redeploy triggered successfully');
-                console.log(`   Deployment ID: ${jsonResponse.data.deploymentCreate.id}`);
+                if (deployResult.id) {
+                  console.log(`   Deployment ID: ${deployResult.id}`);
+                }
+                if (deployResult.status) {
+                  console.log(`   Status: ${deployResult.status}`);
+                }
                 resolve(true);
               } else {
                 console.error(`❌ Unexpected Railway API response:`, responseData);
