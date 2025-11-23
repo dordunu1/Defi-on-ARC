@@ -891,11 +891,9 @@ async function triggerRailwayRedeploy() {
   }
 
   try {
-    const url = `https://api.railway.app/v1/deployments`;
-    const data = JSON.stringify({
-      projectId: RAILWAY_PROJECT_ID,
-      serviceId: RAILWAY_SERVICE_ID,
-    });
+    // Railway API endpoint for creating a new deployment (redeploy)
+    const url = `https://api.railway.app/v1/services/${RAILWAY_SERVICE_ID}/deployments`;
+    const data = JSON.stringify({});
 
     return new Promise((resolve, reject) => {
       const options = {
