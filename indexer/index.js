@@ -1016,14 +1016,14 @@ function isRateLimitError(error) {
  * Run indexer in polling loop
  * Uses HTTP RPC for all operations
  * Polls every 10 seconds to keep up with chain activity
- * Automatically triggers redeploy every 5 minutes (TESTING - change to 110 minutes for production)
+ * Automatically triggers redeploy every 1 hour 30 minutes to prevent RPC errors
  */
 async function run() {
   const startTime = Date.now();
-  const RESTART_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (TESTING - change to 110 * 60 * 1000 for production - 1h50m)
+  const RESTART_INTERVAL_MS = 90 * 60 * 1000; // 1 hour 30 minutes in milliseconds
   
   console.log('Starting indexer polling loop with HTTP RPC...');
-  console.log(`⏰ Scheduled redeploy in 5 minutes (TESTING MODE) (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
+  console.log(`⏰ Scheduled redeploy in 1 hour 30 minutes (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
   
   // Test HTTP RPC connection on startup
   const rpcHealth = await testRPCConnection();
