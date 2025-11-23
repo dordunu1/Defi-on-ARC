@@ -892,23 +892,23 @@ async function triggerRailwayRedeploy() {
   }
 
   try {
-    // Railway GraphQL API endpoint
+    // Try Railway GraphQL API endpoint
+    // Railway uses GraphQL at backboard.railway.app
     const url = 'https://backboard.railway.app/graphql/v1';
     
     // GraphQL mutation to trigger a new deployment (redeploy)
+    // Try different possible mutation names
     const graphqlMutation = {
       query: `
-        mutation deploymentCreate($input: DeploymentCreateInput!) {
-          deploymentCreate(input: $input) {
+        mutation deploymentCreate($serviceId: String!) {
+          deploymentCreate(serviceId: $serviceId) {
             id
             status
           }
         }
       `,
       variables: {
-        input: {
-          serviceId: RAILWAY_SERVICE_ID,
-        }
+        serviceId: RAILWAY_SERVICE_ID,
       }
     };
 
@@ -950,7 +950,15 @@ async function triggerRailwayRedeploy() {
               resolve(false);
             }
           } else {
-            console.error(`❌ Railway API error: ${res.statusCode} - ${responseData}`);
+            console.error(`❌ Railway API error: ${res.statusCode}`);
+            console.error(`   Full response: ${responseData}`);
+            // Try to parse and show more details
+            try {
+              const errorJson = JSON.parse(responseData);
+              console.error(`   Parsed error:`, JSON.stringify(errorJson, null, 2));
+            } catch (e) {
+              // Not JSON, that's fine
+            }
             resolve(false);
           }
         });
