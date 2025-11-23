@@ -899,13 +899,14 @@ async function triggerRailwayRedeploy() {
     
     // Use serviceInstanceDeploy mutation for full redeploy
     // This triggers a complete rebuild and redeploy of the service
+    // Note: The mutation may not return fields, just a boolean
+    console.log(`   Using Service ID: ${RAILWAY_SERVICE_ID}`);
+    console.log(`   Using Environment ID: ${RAILWAY_ENVIRONMENT_ID}`);
+    
     const graphqlMutation = {
       query: `
         mutation serviceInstanceDeploy($serviceId: String!, $environmentId: String!) {
-          serviceInstanceDeploy(serviceId: $serviceId, environmentId: $environmentId) {
-            id
-            status
-          }
+          serviceInstanceDeploy(serviceId: $serviceId, environmentId: $environmentId)
         }
       `,
       variables: {
@@ -937,19 +938,20 @@ async function triggerRailwayRedeploy() {
               const jsonResponse = JSON.parse(responseData);
               if (jsonResponse.errors) {
                 console.error(`❌ Railway GraphQL errors:`, JSON.stringify(jsonResponse.errors, null, 2));
+                // Check if it's a permission issue
+                const errorMessage = jsonResponse.errors[0]?.message || '';
+                if (errorMessage.includes('permission') || errorMessage.includes('authorized') || errorMessage.includes('token')) {
+                  console.error('   ⚠️ This might be a token permission issue. Make sure you\'re using a "No Team" token.');
+                }
                 resolve(false);
-              } else if (jsonResponse.data && jsonResponse.data.serviceInstanceDeploy) {
-                const deployResult = jsonResponse.data.serviceInstanceDeploy;
+              } else if (jsonResponse.data && jsonResponse.data.serviceInstanceDeploy !== undefined) {
+                // The mutation returns a boolean (true if successful)
                 console.log('✅ Railway redeploy triggered successfully');
-                if (deployResult.id) {
-                  console.log(`   Deployment ID: ${deployResult.id}`);
-                }
-                if (deployResult.status) {
-                  console.log(`   Status: ${deployResult.status}`);
-                }
+                console.log(`   Result: ${jsonResponse.data.serviceInstanceDeploy}`);
                 resolve(true);
               } else {
                 console.error(`❌ Unexpected Railway API response:`, responseData);
+                console.error(`   Response data:`, JSON.stringify(jsonResponse, null, 2));
                 resolve(false);
               }
             } catch (parseError) {
