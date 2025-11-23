@@ -894,8 +894,8 @@ async function triggerRailwayRedeploy() {
   }
 
   try {
-    // Railway GraphQL API endpoint
-    const url = 'https://backboard.railway.app/graphql/v1';
+    // Railway GraphQL API endpoint (public API v2)
+    const url = 'https://backboard.railway.com/graphql/v2';
     
     // Use serviceInstanceDeploy mutation for full redeploy
     // This triggers a complete rebuild and redeploy of the service
