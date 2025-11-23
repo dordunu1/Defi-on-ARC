@@ -15,6 +15,7 @@ require('dotenv').config();
 
 const { createPublicClient, http, parseAbiItem } = require('viem');
 const { createClient } = require('@supabase/supabase-js');
+const https = require('https');
 
 // DEX Configuration
 const DEX_CONFIG = {
@@ -123,6 +124,9 @@ const KNOWN_TOKENS = {
 const HTTP_RPC_URL = process.env.HTTP_RPC_URL || process.env.RPC_URL || 'https://rpc.testnet.arc.network';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
+const RAILWAY_API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
+const RAILWAY_PROJECT_ID = process.env.RAILWAY_PROJECT_ID || '';
+const RAILWAY_SERVICE_ID = process.env.RAILWAY_SERVICE_ID || '';
 
 // Arc Testnet chain config
 const arcTestnet = {
@@ -876,6 +880,64 @@ async function testRPCConnection() {
 }
 
 /**
+ * Trigger a Railway redeploy via API
+ * Requires RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID
+ */
+async function triggerRailwayRedeploy() {
+  if (!RAILWAY_API_TOKEN || !RAILWAY_PROJECT_ID || !RAILWAY_SERVICE_ID) {
+    console.warn('⚠️ Railway API credentials not set - cannot trigger redeploy');
+    console.warn('   Set RAILWAY_API_TOKEN, RAILWAY_PROJECT_ID, and RAILWAY_SERVICE_ID environment variables');
+    return false;
+  }
+
+  try {
+    const url = `https://api.railway.app/v1/deployments`;
+    const data = JSON.stringify({
+      projectId: RAILWAY_PROJECT_ID,
+      serviceId: RAILWAY_SERVICE_ID,
+    });
+
+    return new Promise((resolve, reject) => {
+      const options = {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RAILWAY_API_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Content-Length': data.length,
+        },
+      };
+
+      const req = https.request(url, options, (res) => {
+        let responseData = '';
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log('✅ Railway redeploy triggered successfully');
+            resolve(true);
+          } else {
+            console.error(`❌ Railway API error: ${res.statusCode} - ${responseData}`);
+            resolve(false);
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        console.error('❌ Error triggering Railway redeploy:', error);
+        resolve(false);
+      });
+
+      req.write(data);
+      req.end();
+    });
+  } catch (error) {
+    console.error('❌ Exception triggering Railway redeploy:', error);
+    return false;
+  }
+}
+
+/**
  * Check if an error is a rate limit error (429)
  * Recursively checks error and its cause chain
  */
@@ -904,14 +966,14 @@ function isRateLimitError(error) {
  * Run indexer in polling loop
  * Uses HTTP RPC for all operations
  * Polls every 10 seconds to keep up with chain activity
- * Automatically restarts every 30 minutes (TESTING - change to 110 minutes for production)
+ * Automatically triggers redeploy every 5 minutes (TESTING - change to 110 minutes for production)
  */
 async function run() {
   const startTime = Date.now();
-  const RESTART_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes in milliseconds (110 * 60 * 1000 for production - 1h50m)
+  const RESTART_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes in milliseconds (TESTING - change to 110 * 60 * 1000 for production - 1h50m)
   
   console.log('Starting indexer polling loop with HTTP RPC...');
-  console.log(`⏰ Scheduled restart in 30 minutes (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
+  console.log(`⏰ Scheduled redeploy in 5 minutes (TESTING MODE) (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
   
   // Test HTTP RPC connection on startup
   const rpcHealth = await testRPCConnection();
@@ -925,18 +987,29 @@ async function run() {
   const MAX_CONSECUTIVE_ERRORS = 5;
   let lastTimeRemainingLog = 0;
   
-  // Helper function to check if restart is needed
-  function checkRestartTime() {
+  // Helper function to check if restart/redeploy is needed
+  async function checkRestartTime() {
     const elapsed = Date.now() - startTime;
     if (elapsed >= RESTART_INTERVAL_MS) {
       const hours = (elapsed / (60 * 60 * 1000)).toFixed(2);
       const minutes = (elapsed / (60 * 1000)).toFixed(0);
       const intervalMinutes = RESTART_INTERVAL_MS / (60 * 1000);
-      console.log(`\n⏰ ${intervalMinutes} minute restart interval reached (ran for ${hours} hours / ${minutes} minutes)`);
-      console.log('🔄 Gracefully shutting down for automatic restart...');
-      console.log('   Railway will automatically restart this service.');
-      console.log('   (Using exit code 1 to trigger Railway\'s ALWAYS restart policy)\n');
-      process.exit(1); // Exit with code 1 to trigger Railway's ALWAYS restart policy
+      console.log(`\n⏰ ${intervalMinutes} minute interval reached (ran for ${hours} hours / ${minutes} minutes)`);
+      
+      // Try to trigger Railway redeploy (full redeploy, not just restart)
+      console.log('🔄 Attempting to trigger Railway redeploy...');
+      const redeployTriggered = await triggerRailwayRedeploy();
+      
+      if (redeployTriggered) {
+        console.log('✅ Redeploy triggered - Railway will redeploy the service');
+        console.log('   Exiting now - Railway will handle the redeploy\n');
+      } else {
+        console.log('⚠️ Could not trigger redeploy via API - falling back to exit/restart');
+        console.log('   Railway will restart this service automatically.\n');
+      }
+      
+      // Exit - Railway will redeploy or restart
+      process.exit(1);
     }
     return elapsed;
   }
@@ -962,17 +1035,17 @@ async function run() {
   
   while (true) {
     // Check restart time at the start of each loop
-    const elapsed = checkRestartTime();
+    const elapsed = await checkRestartTime();
     logTimeRemaining(elapsed, true); // Log on every poll cycle
     
     // Check again right before calling index() to ensure we don't start a long operation
-    checkRestartTime();
+    await checkRestartTime();
     
     try {
       await index();
       
       // Check again after index() completes (in case it took a long time)
-      const elapsedAfter = checkRestartTime();
+      const elapsedAfter = await checkRestartTime();
       logTimeRemaining(elapsedAfter); // Log after index completes
       consecutiveErrors = 0; // Reset error counter on success
     } catch (error) {
@@ -1019,7 +1092,7 @@ async function run() {
     const checkInterval = 5000; // Check every 5 seconds
     
     while (Date.now() - waitStart < waitDuration) {
-      checkRestartTime(); // Check if we need to restart during the wait
+      await checkRestartTime(); // Check if we need to restart during the wait
       await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, waitDuration - (Date.now() - waitStart))));
     }
   }
