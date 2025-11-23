@@ -214,6 +214,11 @@ async function fetchAllPools() {
 
     return pools;
   } catch (error) {
+    // If it's a rate limit error, re-throw it so it's caught by the main error handler
+    if (isRateLimitError(error)) {
+      console.error('Rate limit error while fetching pools:', error.message || error);
+      throw error; // Re-throw to trigger rate limit handling in main loop
+    }
     console.error('Error fetching pools:', error);
     return [];
   }
@@ -300,6 +305,11 @@ async function processSwapEvents(poolAddress, fromBlock, toBlock) {
 
     return events;
   } catch (error) {
+    // If it's a rate limit error, re-throw it so it's caught by the main error handler
+    if (isRateLimitError(error)) {
+      console.error(`Rate limit error while processing swap events for pool ${poolAddress}:`, error.message || error);
+      throw error; // Re-throw to trigger rate limit handling in main loop
+    }
     console.error(`Error processing swap events for pool ${poolAddress}:`, error);
     return [];
   }
@@ -867,28 +877,41 @@ async function testRPCConnection() {
 
 /**
  * Check if an error is a rate limit error (429)
+ * Recursively checks error and its cause chain
  */
 function isRateLimitError(error) {
-  return (
+  if (!error) return false;
+  
+  // Check current error
+  if (
     error.status === 429 || 
     error.code === 429 ||
     (error.message && (error.message.includes('429') || error.message.includes('rate limit') || error.message.includes('request limit'))) ||
     (error.details && (error.details.includes('429') || error.details.includes('rate limit') || error.details.includes('request limit')))
-  );
+  ) {
+    return true;
+  }
+  
+  // Recursively check cause chain (for wrapped errors like ContractFunctionExecutionError)
+  if (error.cause) {
+    return isRateLimitError(error.cause);
+  }
+  
+  return false;
 }
 
 /**
  * Run indexer in polling loop
  * Uses HTTP RPC for all operations
  * Polls every 10 seconds to keep up with chain activity
- * Automatically restarts every 1 hour 50 minutes to prevent RPC errors
+ * Automatically restarts every 2 minutes (TESTING) - change to 110 minutes for production
  */
 async function run() {
   const startTime = Date.now();
-  const RESTART_INTERVAL_MS = 110 * 60 * 1000; // 1 hour 50 minutes in milliseconds
+  const RESTART_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes in milliseconds (TESTING - change back to 110 * 60 * 1000 for production)
   
   console.log('Starting indexer polling loop with HTTP RPC...');
-  console.log(`⏰ Scheduled restart in 1 hour 50 minutes (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
+  console.log(`⏰ Scheduled restart in 2 minutes (TESTING MODE) (${new Date(startTime + RESTART_INTERVAL_MS).toISOString()})`);
   
   // Test HTTP RPC connection on startup
   const rpcHealth = await testRPCConnection();
@@ -908,11 +931,12 @@ async function run() {
     if (elapsed >= RESTART_INTERVAL_MS) {
       const hours = (elapsed / (60 * 60 * 1000)).toFixed(2);
       const minutes = (elapsed / (60 * 1000)).toFixed(0);
-      console.log(`\n⏰ 1 hour 50 minute restart interval reached (ran for ${hours} hours / ${minutes} minutes)`);
+      const intervalMinutes = RESTART_INTERVAL_MS / (60 * 1000);
+      console.log(`\n⏰ ${intervalMinutes} minute restart interval reached (ran for ${hours} hours / ${minutes} minutes)`);
       console.log('🔄 Gracefully shutting down for automatic restart...');
       console.log('   Railway will automatically restart this service.');
-      console.log('   (Using exit code 1 to trigger Railway\'s ON_FAILURE restart policy)\n');
-      process.exit(1); // Exit with code 1 to trigger Railway's ON_FAILURE restart policy
+      console.log('   (Using exit code 1 to trigger Railway\'s ALWAYS restart policy)\n');
+      process.exit(1); // Exit with code 1 to trigger Railway's ALWAYS restart policy
     }
     return elapsed;
   }
@@ -955,22 +979,16 @@ async function run() {
       // Check if this is a rate limit error (429)
       if (isRateLimitError(error)) {
         // Don't count rate limit errors as consecutive errors
-        console.warn('⚠️ Rate limit reached (429) - waiting 5 minutes before retry...');
-        console.warn('   This is expected when hitting daily RPC limits. The indexer will continue after the wait.');
+        // Daily limit (100k per 24h) - waiting won't help, exit and let Railway restart
+        console.warn('⚠️ Daily rate limit reached (429) - 100,000 requests per 24h limit hit');
+        console.warn('   Exiting to let Railway restart automatically (restartPolicyType: ALWAYS)');
+        console.warn('   Railway will restart the service immediately after exit.');
+        console.log('🔄 Exiting for Railway auto-restart...');
         
-        // Wait 5 minutes before retrying (rate limits usually reset daily)
-        // But check restart time periodically during the wait
-        console.log('⏳ Waiting 5 minutes before next attempt...');
-        const waitStart = Date.now();
-        const waitDuration = 5 * 60 * 1000; // 5 minutes
-        const checkInterval = 30 * 1000; // Check every 30 seconds
+        // Small delay to ensure logs are flushed
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        while (Date.now() - waitStart < waitDuration) {
-          checkRestartTime(); // Check if we need to restart during the wait
-          await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, waitDuration - (Date.now() - waitStart))));
-        }
-        console.log('⏳ Retrying after rate limit wait...');
-        continue; // Skip the normal 10-second wait below
+        process.exit(1); // Exit with code 1 - Railway's ALWAYS policy will restart it
       } else {
         // Only count non-rate-limit errors
         consecutiveErrors++;
