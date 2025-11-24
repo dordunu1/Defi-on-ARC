@@ -184,32 +184,37 @@ export default function Swap() {
   const [swapPath, setSwapPath] = useState<TokenSymbol[] | null>(null);
   
   useEffect(() => {
-    const fetchSwapPath = async () => {
-      if (!poolAddress && DEX_CONFIG.ROUTER_ADDRESS && publicClient) {
-        try {
-          const path = await findSwapPath(fromTokenForPool, toTokenForPool);
-          // Convert addresses to token symbols
-          const pathSymbols: TokenSymbol[] = [];
-          for (const addr of path) {
-            const token = Object.entries(TOKENS).find(([_, info]) => 
-              info.address.toLowerCase() === (addr as string).toLowerCase()
-            )?.[0] as TokenSymbol | undefined;
-            if (token) pathSymbols.push(token);
+    // Debounce path fetching to reduce RPC calls
+    const timer = setTimeout(() => {
+      const fetchSwapPath = async () => {
+        if (!poolAddress && DEX_CONFIG.ROUTER_ADDRESS && publicClient) {
+          try {
+            const path = await findSwapPath(fromTokenForPool, toTokenForPool);
+            // Convert addresses to token symbols
+            const pathSymbols: TokenSymbol[] = [];
+            for (const addr of path) {
+              const token = Object.entries(TOKENS).find(([_, info]) => 
+                info.address.toLowerCase() === (addr as string).toLowerCase()
+              )?.[0] as TokenSymbol | undefined;
+              if (token) pathSymbols.push(token);
+            }
+            setSwapPath(pathSymbols.length > 0 ? pathSymbols : null);
+          } catch (error) {
+            setSwapPath(null);
           }
-          setSwapPath(pathSymbols.length > 0 ? pathSymbols : null);
-        } catch (error) {
-          setSwapPath(null);
+        } else {
+          setSwapPath(null); // Direct swap, no path needed
         }
+      };
+      
+      if (fromToken && toToken && !poolAddress) {
+        fetchSwapPath();
       } else {
-        setSwapPath(null); // Direct swap, no path needed
+        setSwapPath(null);
       }
-    };
+    }, 500); // Wait 500ms after tokens change before fetching path
     
-    if (fromToken && toToken && !poolAddress) {
-      fetchSwapPath();
-    } else {
-      setSwapPath(null);
-    }
+    return () => clearTimeout(timer);
   }, [fromToken, toToken, poolAddress, publicClient, findSwapPath]);
   
   const [swapStep, setSwapStep] = useState<'none' | 'approving' | 'swapping'>('none');

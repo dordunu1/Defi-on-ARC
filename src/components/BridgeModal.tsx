@@ -176,8 +176,8 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
 
     fetchSourceBalance();
-    // Refresh every 5 seconds
-    const interval = setInterval(fetchSourceBalance, 5000);
+    // Refresh every 30 seconds (reduced frequency to avoid rate limits)
+    const interval = setInterval(fetchSourceBalance, 30000);
 
     return () => {
       isCancelled = true;
@@ -265,8 +265,8 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
 
     fetchDestinationBalance();
-    // Refresh every 5 seconds
-    const interval = setInterval(fetchDestinationBalance, 5000);
+    // Refresh every 30 seconds (reduced frequency to avoid rate limits)
+    const interval = setInterval(fetchDestinationBalance, 30000);
 
     return () => {
       isCancelled = true;

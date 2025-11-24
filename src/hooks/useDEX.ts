@@ -56,7 +56,11 @@ export function usePoolAddress(tokenA: Address | TokenSymbol, tokenB: Address | 
     abi: FACTORY_ABI,
     functionName: 'getPool',
     args: sortedTokenA && sortedTokenB ? [sortedTokenA, sortedTokenB] : undefined,
-    query: { enabled: !!sortedTokenA && !!sortedTokenB && !!publicClient },
+    query: { 
+      enabled: !!sortedTokenA && !!sortedTokenB && !!publicClient,
+      staleTime: 300000, // Cache for 5 minutes (pool addresses don't change)
+      gcTime: 600000, // Keep in cache for 10 minutes
+    },
   });
 
   return (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') 
@@ -558,14 +562,22 @@ export function usePoolReserves(tokenA: Address | TokenSymbol, tokenB: Address |
     address: poolAddress || undefined,
     abi: POOL_ABI,
     functionName: 'tokenA',
-    query: { enabled: !!poolAddress },
+    query: { 
+      enabled: !!poolAddress,
+      staleTime: 300000, // Cache for 5 minutes (tokens don't change)
+      gcTime: 600000, // Keep in cache for 10 minutes
+    },
   });
 
   const { data: poolTokenB } = useReadContract({
     address: poolAddress || undefined,
     abi: POOL_ABI,
     functionName: 'tokenB',
-    query: { enabled: !!poolAddress },
+    query: { 
+      enabled: !!poolAddress,
+      staleTime: 300000, // Cache for 5 minutes
+      gcTime: 600000, // Keep in cache for 10 minutes
+    },
   });
 
   // Fetch decimals for the ACTUAL pool tokens (not function parameters!)
@@ -573,14 +585,22 @@ export function usePoolReserves(tokenA: Address | TokenSymbol, tokenB: Address |
     address: poolTokenA as Address | undefined,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!poolTokenA },
+    query: { 
+      enabled: !!poolTokenA,
+      staleTime: 600000, // Cache for 10 minutes (decimals never change)
+      gcTime: 1800000, // Keep in cache for 30 minutes
+    },
   });
 
   const { data: tokenBDecimalsRaw } = useReadContract({
     address: poolTokenB as Address | undefined,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!poolTokenB },
+    query: { 
+      enabled: !!poolTokenB,
+      staleTime: 600000, // Cache for 10 minutes
+      gcTime: 1800000, // Keep in cache for 30 minutes
+    },
   });
 
   // Get decimals from TOKENS map if available, otherwise use fetched or default to 18
@@ -610,7 +630,11 @@ export function usePoolReserves(tokenA: Address | TokenSymbol, tokenB: Address |
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: poolAddress ? [poolAddress] : undefined,
-    query: { enabled: !!poolAddress && !!poolTokenA },
+    query: { 
+      enabled: !!poolAddress && !!poolTokenA,
+      staleTime: 10000, // Cache for 10 seconds (balances update on swaps/adds/removes)
+      gcTime: 120000, // Keep in cache for 2 minutes
+    },
   });
 
   const { data: balanceB } = useReadContract({
@@ -618,7 +642,11 @@ export function usePoolReserves(tokenA: Address | TokenSymbol, tokenB: Address |
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: poolAddress ? [poolAddress] : undefined,
-    query: { enabled: !!poolAddress && !!poolTokenB },
+    query: { 
+      enabled: !!poolAddress && !!poolTokenB,
+      staleTime: 10000, // Cache for 10 seconds
+      gcTime: 120000, // Keep in cache for 2 minutes
+    },
   });
 
   return {
@@ -649,17 +677,17 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
   const shouldUseRouter = !poolAddress && DEX_CONFIG.ROUTER_ADDRESS && tokenAAddr && tokenBAddr;
   
   // Find swap path using Router (for multi-hop) - with error handling
-  const { data: routerPath, error: routerPathError, isLoading: isLoadingRouterPath, refetch: refetchRouterPath } = useReadContract({
+  const { data: routerPath, error: routerPathError, isLoading: isLoadingRouterPath } = useReadContract({
     address: shouldUseRouter ? (DEX_CONFIG.ROUTER_ADDRESS as Address) : undefined,
     abi: ROUTER_ABI,
     functionName: 'findBestPath',
     args: tokenAAddr && tokenBAddr ? [tokenAAddr, tokenBAddr] : undefined,
     query: { 
       enabled: shouldUseRouter && !!tokenAAddr && !!tokenBAddr,
-      retry: 2, // Retry twice
-      retryDelay: 500, // Wait 500ms between retries
-      staleTime: 0, // Don't cache - always refetch
-      gcTime: 0, // Don't keep in cache
+      retry: 1, // Only retry once on failure
+      retryDelay: 1000, // Wait 1s between retries
+      staleTime: 30000, // Cache for 30 seconds (path doesn't change often)
+      gcTime: 300000, // Keep in cache for 5 minutes
     },
   });
   
@@ -699,47 +727,36 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     return null;
   }, [shouldUseRouter, routerPath, routerPathError, tokenAAddr, tokenBAddr, usdcPool1, usdcPool2]);
   
-  // Refetch Router path when token addresses change (to clear any cached errors)
-  useEffect(() => {
-    if (shouldUseRouter && tokenAAddr && tokenBAddr && !isLoadingRouterPath) {
-      // Always refetch when tokens change to ensure fresh path
-      const timer = setTimeout(() => {
-        refetchRouterPath();
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [shouldUseRouter, tokenAAddr, tokenBAddr, refetchRouterPath, isLoadingRouterPath]);
-  
   // Use Router path or manual path
   const finalRouterPath = routerPath || manualPath;
   
+  // Debounce amount input to reduce RPC calls while user is typing
+  const [debouncedAmountIn, setDebouncedAmountIn] = useState(amountIn);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedAmountIn(amountIn);
+    }, 300); // Wait 300ms after user stops typing
+    
+    return () => clearTimeout(timer);
+  }, [amountIn]);
+  
   // Get Router output amounts for multi-hop swaps (using the found path)
-  const { data: routerAmounts, error: routerAmountsError, refetch: refetchRouterAmounts } = useReadContract({
+  const { data: routerAmounts } = useReadContract({
     address: shouldUseRouter && finalRouterPath ? (DEX_CONFIG.ROUTER_ADDRESS as Address) : undefined,
     abi: ROUTER_ABI,
     functionName: 'getAmountsOut',
-    args: finalRouterPath && tokenAAddr && amountIn && parseFloat(amountIn) > 0
-      ? [parseUnits(amountIn, typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol] ? TOKENS[tokenA as TokenSymbol].decimals : 18), finalRouterPath as Address[]]
+    args: finalRouterPath && tokenAAddr && debouncedAmountIn && parseFloat(debouncedAmountIn) > 0
+      ? [parseUnits(debouncedAmountIn, typeof tokenA === 'string' && TOKENS[tokenA as TokenSymbol] ? TOKENS[tokenA as TokenSymbol].decimals : 18), finalRouterPath as Address[]]
       : undefined,
     query: { 
-      enabled: shouldUseRouter && !!finalRouterPath && !!tokenAAddr && !!amountIn && parseFloat(amountIn) > 0,
-      retry: 3, // Increased retries
+      enabled: shouldUseRouter && !!finalRouterPath && !!tokenAAddr && !!debouncedAmountIn && parseFloat(debouncedAmountIn) > 0,
+      retry: 1, // Only retry once on failure
       retryDelay: 1000,
-      staleTime: 0, // Don't cache - always refetch when amount changes
-      gcTime: 0,
+      staleTime: 5000, // Cache for 5 seconds (amounts change frequently but don't need instant updates)
+      gcTime: 60000, // Keep in cache for 1 minute
     },
   });
-  
-  
-  // Refetch amounts when path or amount changes
-  useEffect(() => {
-    if (shouldUseRouter && finalRouterPath && amountIn && parseFloat(amountIn) > 0) {
-      const timer = setTimeout(() => {
-        refetchRouterAmounts();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [shouldUseRouter, finalRouterPath, amountIn, refetchRouterAmounts]);
   
   // WORKAROUND: Use contract's stored reserves instead of actual balances
   // This matches what the contract will actually calculate (even if reserves are stale)
@@ -748,14 +765,22 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     address: poolAddress || undefined,
     abi: POOL_ABI,
     functionName: 'reserveA',
-    query: { enabled: !!poolAddress },
+    query: { 
+      enabled: !!poolAddress,
+      staleTime: 10000, // Cache for 10 seconds (reserves update on swaps)
+      gcTime: 120000, // Keep in cache for 2 minutes
+    },
   });
 
   const { data: contractReserveB } = useReadContract({
     address: poolAddress || undefined,
     abi: POOL_ABI,
     functionName: 'reserveB',
-    query: { enabled: !!poolAddress },
+    query: { 
+      enabled: !!poolAddress,
+      staleTime: 10000, // Cache for 10 seconds
+      gcTime: 120000, // Keep in cache for 2 minutes
+    },
   });
 
   // CRITICAL: Read pool's actual tokenA and tokenB to match reserves correctly
@@ -763,14 +788,22 @@ export function useSwapOutput(tokenA: Address | TokenSymbol, tokenB: Address | T
     address: poolAddress || undefined,
     abi: POOL_ABI,
     functionName: 'tokenA',
-    query: { enabled: !!poolAddress },
+    query: { 
+      enabled: !!poolAddress,
+      staleTime: 300000, // Cache for 5 minutes (tokens don't change)
+      gcTime: 600000, // Keep in cache for 10 minutes
+    },
   });
 
   const { data: poolTokenB } = useReadContract({
     address: poolAddress || undefined,
     abi: POOL_ABI,
     functionName: 'tokenB',
-    query: { enabled: !!poolAddress },
+    query: { 
+      enabled: !!poolAddress,
+      staleTime: 300000, // Cache for 5 minutes (tokens don't change)
+      gcTime: 600000, // Keep in cache for 10 minutes
+    },
   });
 
   // Get decimals for pool tokens to format contract reserves

@@ -5,15 +5,11 @@ import { sepolia } from 'viem/chains';
 // Free tier RPCs have rate limits, so we use multiple fallbacks
 const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || '';
 
-// Arc Testnet RPC endpoints - use Alchemy if available, with fallback to public RPC
-const ARC_RPC_URLS = ALCHEMY_API_KEY
-  ? [
-      `https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, // Alchemy (primary - higher rate limits)
-      'https://rpc.testnet.arc.network', // Public Arc RPC (fallback)
-    ]
-  : [
-      'https://rpc.testnet.arc.network', // Public Arc RPC (only option if no Alchemy key)
-    ];
+// Arc Testnet RPC endpoints - use public Arc RPC as primary to avoid rate limits
+const ARC_RPC_URLS = [
+  'https://rpc.testnet.arc.network', // Public Arc RPC (primary - no rate limits)
+  ...(ALCHEMY_API_KEY ? [`https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`] : []), // Alchemy as fallback only
+];
 
 // Use first RPC as primary
 const ARC_RPC_URL = ARC_RPC_URLS[0];
