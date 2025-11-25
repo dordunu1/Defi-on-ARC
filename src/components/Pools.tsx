@@ -528,7 +528,9 @@ export default function Pools() {
 
   // Filter pools with TVL >= 10000 (default view)
   const filteredPools = useMemo(() => {
-    return pools.filter((pool) => {
+    const usdcAddress = TOKENS.USDC.address.toLowerCase();
+    
+    const filtered = pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
       if (poolTVL < 10000) {
         return false;
@@ -543,11 +545,23 @@ export default function Pools() {
       
       return matchesSearch;
     });
+    
+    // Sort: pools with USDC first, then pools without USDC
+    return filtered.sort((a, b) => {
+      const aHasUSDC = a.tokenA.toLowerCase() === usdcAddress || a.tokenB.toLowerCase() === usdcAddress;
+      const bHasUSDC = b.tokenA.toLowerCase() === usdcAddress || b.tokenB.toLowerCase() === usdcAddress;
+      
+      if (aHasUSDC && !bHasUSDC) return -1; // a comes first
+      if (!aHasUSDC && bHasUSDC) return 1;  // b comes first
+      return 0; // Maintain existing order (by TVL descending from Supabase)
+    });
   }, [pools, searchQuery]);
 
   // Filter pools with TVL < 10000 (low TVL pools - expandable section)
   const lowTVLPools = useMemo(() => {
-    return pools.filter((pool) => {
+    const usdcAddress = TOKENS.USDC.address.toLowerCase();
+    
+    const filtered = pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
       if (poolTVL >= 10000) {
         return false;
@@ -561,6 +575,16 @@ export default function Pools() {
         pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
       
       return matchesSearch;
+    });
+    
+    // Sort: pools with USDC first, then pools without USDC
+    return filtered.sort((a, b) => {
+      const aHasUSDC = a.tokenA.toLowerCase() === usdcAddress || a.tokenB.toLowerCase() === usdcAddress;
+      const bHasUSDC = b.tokenA.toLowerCase() === usdcAddress || b.tokenB.toLowerCase() === usdcAddress;
+      
+      if (aHasUSDC && !bHasUSDC) return -1; // a comes first
+      if (!aHasUSDC && bHasUSDC) return 1;  // b comes first
+      return 0; // Maintain existing order (by TVL descending from Supabase)
     });
   }, [pools, searchQuery]);
 
