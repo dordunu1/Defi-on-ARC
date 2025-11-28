@@ -18,7 +18,15 @@ export default function DiscordWidget() {
       {/* Discord FAB Button */}
       <motion.button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-16 right-4 sm:bottom-6 sm:right-60 md:right-72 z-40 bg-indigo-600 text-white rounded-full p-2.5 sm:p-3 md:p-4 shadow-2xl hover:bg-indigo-700 transition-all flex items-center gap-1.5 sm:gap-2 group"
+        className="fixed bottom-16 right-4 sm:bottom-6 sm:right-60 md:right-72 z-40 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-full p-2.5 sm:p-3 md:p-4 transition-all flex items-center gap-1.5 sm:gap-2 group"
+        style={{
+          boxShadow: `
+            inset 0 2px 4px rgba(255, 255, 255, 0.3),
+            inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+            0 4px 12px rgba(99, 102, 241, 0.4),
+            0 2px 4px rgba(0, 0, 0, 0.1)
+          `,
+        }}
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ delay: 0.1 }}
@@ -95,7 +103,15 @@ export default function DiscordWidget() {
                     href={DISCORD_INVITE_LINK}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block w-full text-center px-4 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+                    className="block w-full text-center px-4 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl font-semibold transition-all"
+                    style={{
+                      boxShadow: `
+                        inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                        0 4px 12px rgba(99, 102, 241, 0.4),
+                        0 2px 4px rgba(0, 0, 0, 0.1)
+                      `,
+                    }}
                   >
                     Open in Discord App
                   </a>

@@ -1468,8 +1468,16 @@ export default function CreatePool() {
               className={`w-full py-2.5 sm:py-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-300 flex items-center justify-center gap-2 ${
                 !isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
+                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white active:scale-95'
               }`}
+              style={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair ? {} : {
+                boxShadow: `
+                  inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                  0 4px 12px rgba(251, 146, 60, 0.4),
+                  0 2px 4px rgba(0, 0, 0, 0.1)
+                `,
+              }}
               whileHover={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair ? {} : { scale: 1.02 }}
               whileTap={!isConnected || !isArcTestnet || !tokenA || !tokenB || !isAddress(tokenA) || !isAddress(tokenB) || !hasUSDCPair ? {} : { scale: 0.98 }}
             >
@@ -1613,8 +1621,25 @@ export default function CreatePool() {
                   isAddingLiquidity ||
                   isConfirmingLiquidity
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-orange-500 text-white hover:bg-orange-600'
+                    : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
                 }`}
+                style={!isConnected ||
+                  !isArcTestnet ||
+                  !amountA ||
+                  !amountB ||
+                  parseFloat(amountA) <= 0 ||
+                  parseFloat(amountB) <= 0 ||
+                  isCreating ||
+                  isConfirmingCreate ||
+                  isAddingLiquidity ||
+                  isConfirmingLiquidity ? {} : {
+                  boxShadow: `
+                    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                    0 4px 12px rgba(251, 146, 60, 0.4),
+                    0 2px 4px rgba(0, 0, 0, 0.1)
+                  `,
+                }}
                 whileHover={
                   !isConnected ||
                   !isArcTestnet ||
@@ -2266,7 +2291,15 @@ export default function CreatePool() {
 
                   <motion.button
                     onClick={() => setShowUnauthorizedModal(false)}
-                    className="w-full py-3 rounded-xl font-semibold text-base bg-orange-500 text-white hover:bg-orange-600 transition-all"
+                    className="w-full py-3 rounded-xl font-semibold text-base bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white transition-all"
+                    style={{
+                      boxShadow: `
+                        inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                        0 4px 12px rgba(251, 146, 60, 0.4),
+                        0 2px 4px rgba(0, 0, 0, 0.1)
+                      `,
+                    }}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >

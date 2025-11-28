@@ -1,75 +1,146 @@
 import { useState, useEffect } from 'react';
 import { type Address } from 'viem';
-import { TOKENS, type TokenSymbol } from './useDEX';
+import { type TokenSymbol } from './useDEX';
 
-export interface PoolMetrics {
-  volume24h: number;
-  priceChange24h: number; // Percentage change
-  priceChange24hAbs: number; // Absolute price change
-  currentPrice: number;
-  price24hAgo: number | null;
+interface PoolMetrics {
+  totalTVL: number;
+  totalVolume: number;
+  isLoading: boolean;
 }
 
-/**
- * Hook to fetch 24h volume and calculate 24h price change for a pool
- * OPTIMIZED: 24h volume now comes from materialized view (includes ALL swaps, not limited to 1500)
- * This reduces egress by 99.9% while providing accurate volume data
- */
+interface PoolSpecificMetrics {
+  metrics: {
+    currentPrice: number;
+    volume24h: number;
+  } | null;
+  isLoading: boolean;
+}
+
+// Overload for pool-specific metrics
 export function usePoolMetrics(
-  fromToken: TokenSymbol,
-  toToken: TokenSymbol,
-  poolAddress: Address | null
-) {
-  const [metrics, setMetrics] = useState<PoolMetrics>({
-    volume24h: 0,
-    priceChange24h: 0,
-    priceChange24hAbs: 0,
-    currentPrice: 0,
-    price24hAgo: null,
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  tokenA: TokenSymbol | Address | null | undefined,
+  tokenB: TokenSymbol | Address | null | undefined,
+  poolAddress: Address | null | undefined
+): PoolSpecificMetrics;
+
+// Overload for aggregate metrics
+export function usePoolMetrics(): PoolMetrics;
+
+// Implementation
+export function usePoolMetrics(
+  tokenA?: TokenSymbol | Address | null | undefined,
+  tokenB?: TokenSymbol | Address | null | undefined,
+  poolAddress?: Address | null | undefined
+): PoolMetrics | PoolSpecificMetrics {
+  // If parameters provided, return pool-specific metrics
+  if (tokenA !== undefined && tokenB !== undefined && poolAddress !== undefined) {
+    return usePoolSpecificMetrics(tokenA, tokenB, poolAddress);
+  }
+  
+  // Otherwise return aggregate metrics
+  return useAggregateMetrics();
+}
+
+function useAggregateMetrics(): PoolMetrics {
+  const [totalTVL, setTotalTVL] = useState<number>(0);
+  const [totalVolume, setTotalVolume] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    if (!poolAddress || !fromToken || !toToken) {
-      setMetrics({
-        volume24h: 0,
-        priceChange24h: 0,
-        priceChange24hAbs: 0,
-        currentPrice: 0,
-        price24hAgo: null,
-      });
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    const USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
+
+    if (!supabaseUrl || !supabaseKey) {
+      setIsLoading(false);
       return;
     }
 
-    let isMounted = true;
-    let pollInterval: NodeJS.Timeout | null = null;
-
-    const fetchMetrics = async (isBackgroundPoll = false) => {
-      // Only show loading on initial load, not on background polls
-      if (!isBackgroundPoll) {
-        setIsLoading(true);
-        setError(null);
-      }
-
+    const fetchMetrics = async () => {
       try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+        const usdcAddress = USDC_ADDRESS.toLowerCase();
 
-        if (!supabaseUrl || !supabaseKey) {
-          setError('Supabase not configured');
-          setIsLoading(false);
-          return;
+        // Fetch total TVL from pools
+        const poolsResponse = await fetch(`${supabaseUrl}/rest/v1/pools?select=total_liquidity`, {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+        });
+
+        if (poolsResponse.ok) {
+          const poolsData = await poolsResponse.json();
+          const tvl = poolsData.reduce((sum: number, pool: any) => {
+            return sum + (parseFloat(pool.total_liquidity || 0));
+          }, 0);
+          setTotalTVL(tvl);
         }
 
-        const fromTokenAddr = TOKENS[fromToken].address.toLowerCase();
-        const toTokenAddr = TOKENS[toToken].address.toLowerCase();
-        const poolAddr = poolAddress.toLowerCase();
+        // Fetch total volume
+        const volumeResponse = await fetch(
+          `${supabaseUrl}/rest/v1/rpc/get_total_volume_fees`,
+          {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ usdc_address: usdcAddress }),
+          }
+        );
 
-        // OPTIMIZED: Fetch 24h volume from materialized view via RPC function
-        // This includes ALL swaps in the 24h window (not limited to 1500 events)
-        // Reads 1 row instead of scanning thousands of events = 99.9% less egress
-        const volume24hResponse = await fetch(
+        if (volumeResponse.ok) {
+          const volumeData = await volumeResponse.json();
+          setTotalVolume(volumeData[0]?.total_volume || 0);
+        }
+
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching pool metrics:', error);
+        setIsLoading(false);
+      }
+    };
+
+    fetchMetrics();
+    
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchMetrics, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  return { totalTVL, totalVolume, isLoading };
+}
+
+function usePoolSpecificMetrics(
+  tokenA: TokenSymbol | Address | null | undefined,
+  tokenB: TokenSymbol | Address | null | undefined,
+  poolAddress: Address | null | undefined
+): PoolSpecificMetrics {
+  const [metrics, setMetrics] = useState<{ currentPrice: number; volume24h: number } | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!poolAddress || !tokenA || !tokenB) {
+      setIsLoading(false);
+      return;
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+    if (!supabaseUrl || !supabaseKey) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchPoolMetrics = async () => {
+      try {
+        const poolAddressLower = poolAddress.toLowerCase();
+        
+        // Fetch 24h volume for this specific pool
+        const volumeResponse = await fetch(
           `${supabaseUrl}/rest/v1/rpc/get_pool_volume_24h`,
           {
             method: 'POST',
@@ -78,25 +149,19 @@ export function usePoolMetrics(
               'Authorization': `Bearer ${supabaseKey}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ pool_address_param: poolAddr }),
+            body: JSON.stringify({ pool_address_param: poolAddressLower }),
           }
         );
 
         let volume24h = 0;
-        if (volume24hResponse.ok) {
-          const volumeData = await volume24hResponse.json();
-          volume24h = volumeData[0]?.volume_24h || 0;
-        } else {
-          console.warn('Failed to fetch 24h volume from materialized view, using 0');
+        if (volumeResponse.ok) {
+          const volumeData = await volumeResponse.json();
+          volume24h = parseFloat(volumeData[0]?.volume_24h || 0);
         }
 
-        // Calculate 24 hours ago (always use current time to get rolling 24h window)
-        const now = new Date();
-        const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-        // Fetch current price and price 24h ago from price_history
-        const priceHistoryResponse = await fetch(
-          `${supabaseUrl}/rest/v1/price_history?pool_address=eq.${poolAddr}&timestamp=gte.${twentyFourHoursAgo.toISOString()}&select=timestamp,reserve_a,reserve_b,token_a,token_b&order=timestamp.asc`,
+        // Fetch current price from pool reserves
+        const poolResponse = await fetch(
+          `${supabaseUrl}/rest/v1/pools?pool_address=eq.${poolAddressLower}&select=reserve_a,reserve_b,reserve_a_decimals,reserve_b_decimals`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -106,146 +171,32 @@ export function usePoolMetrics(
         );
 
         let currentPrice = 0;
-        let price24hAgo: number | null = null;
-
-        if (priceHistoryResponse.ok) {
-          const priceHistory = await priceHistoryResponse.json();
-
-          if (priceHistory.length > 0) {
-            // Get most recent price (current)
-            const latest = priceHistory[priceHistory.length - 1];
-            const tokenA = latest.token_a?.toLowerCase();
-            const tokenB = latest.token_b?.toLowerCase();
-            
-            const fromMatchesA = tokenA === fromTokenAddr;
-            const fromMatchesB = tokenB === fromTokenAddr;
-            
-            if (fromMatchesA) {
-              // fromToken is tokenA, calculate reserveB/reserveA
-              const reserveA = parseFloat(latest.reserve_a) || 0;
-              const reserveB = parseFloat(latest.reserve_b) || 0;
-              const tokenADecimals = TOKENS[fromToken].decimals || 18;
-              const tokenBDecimals = TOKENS[toToken].decimals || 18;
-              const reserveAFormatted = reserveA / (10 ** tokenADecimals);
-              const reserveBFormatted = reserveB / (10 ** tokenBDecimals);
-              if (reserveAFormatted > 0) {
-                currentPrice = reserveBFormatted / reserveAFormatted;
-              }
-            } else if (fromMatchesB) {
-              // fromToken is tokenB, calculate reserveA/reserveB
-              const reserveA = parseFloat(latest.reserve_a) || 0;
-              const reserveB = parseFloat(latest.reserve_b) || 0;
-              const tokenADecimals = TOKENS[toToken].decimals || 18;
-              const tokenBDecimals = TOKENS[fromToken].decimals || 18;
-              const reserveAFormatted = reserveA / (10 ** tokenADecimals);
-              const reserveBFormatted = reserveB / (10 ** tokenBDecimals);
-              if (reserveBFormatted > 0) {
-                currentPrice = reserveAFormatted / reserveBFormatted;
-              }
-            }
-
-            // Get price 24h ago (first entry or closest to 24h ago)
-            const targetTime = twentyFourHoursAgo.getTime();
-            let closestEntry = priceHistory[0];
-            let minDiff = Math.abs(new Date(closestEntry.timestamp).getTime() - targetTime);
-
-            for (const entry of priceHistory) {
-              const entryTime = new Date(entry.timestamp).getTime();
-              const diff = Math.abs(entryTime - targetTime);
-              if (diff < minDiff) {
-                minDiff = diff;
-                closestEntry = entry;
-              }
-            }
-
-            // Calculate price 24h ago
-            const entryTokenA = closestEntry.token_a?.toLowerCase();
-            const entryTokenB = closestEntry.token_b?.toLowerCase();
-            
-            const entryFromMatchesA = entryTokenA === fromTokenAddr;
-            const entryFromMatchesB = entryTokenB === fromTokenAddr;
-            
-            if (entryFromMatchesA) {
-              const reserveA = parseFloat(closestEntry.reserve_a) || 0;
-              const reserveB = parseFloat(closestEntry.reserve_b) || 0;
-              const tokenADecimals = TOKENS[fromToken].decimals || 18;
-              const tokenBDecimals = TOKENS[toToken].decimals || 18;
-              const reserveAFormatted = reserveA / (10 ** tokenADecimals);
-              const reserveBFormatted = reserveB / (10 ** tokenBDecimals);
-              if (reserveAFormatted > 0) {
-                price24hAgo = reserveBFormatted / reserveAFormatted;
-              }
-            } else if (entryFromMatchesB) {
-              const reserveA = parseFloat(closestEntry.reserve_a) || 0;
-              const reserveB = parseFloat(closestEntry.reserve_b) || 0;
-              const tokenADecimals = TOKENS[toToken].decimals || 18;
-              const tokenBDecimals = TOKENS[fromToken].decimals || 18;
-              const reserveAFormatted = reserveA / (10 ** tokenADecimals);
-              const reserveBFormatted = reserveB / (10 ** tokenBDecimals);
-              if (reserveBFormatted > 0) {
-                price24hAgo = reserveAFormatted / reserveBFormatted;
-              }
+        if (poolResponse.ok) {
+          const poolData = await poolResponse.json();
+          if (poolData.length > 0 && poolData[0].reserve_a && poolData[0].reserve_b) {
+            const reserveA = parseFloat(poolData[0].reserve_a) / Math.pow(10, poolData[0].reserve_a_decimals || 18);
+            const reserveB = parseFloat(poolData[0].reserve_b) / Math.pow(10, poolData[0].reserve_b_decimals || 18);
+            if (reserveB > 0) {
+              currentPrice = reserveA / reserveB;
             }
           }
         }
 
-        // Calculate percentage change
-        let priceChange24h = 0;
-        let priceChange24hAbs = 0;
-        if (price24hAgo !== null && price24hAgo > 0 && currentPrice > 0) {
-          priceChange24hAbs = currentPrice - price24hAgo;
-          priceChange24h = ((currentPrice - price24hAgo) / price24hAgo) * 100;
-        }
-
-        if (isMounted) {
-          // Always update metrics, even during background polls
-          // Use direct state update to ensure real-time updates
-          setMetrics({
-            volume24h,
-            priceChange24h,
-            priceChange24hAbs,
-            currentPrice,
-            price24hAgo,
-          });
-        }
-      } catch (err: any) {
-        if (isMounted && !isBackgroundPoll) {
-          setError(err.message || 'Failed to load pool metrics');
-          setMetrics({
-            volume24h: 0,
-            priceChange24h: 0,
-            priceChange24hAbs: 0,
-            currentPrice: 0,
-            price24hAgo: null,
-          });
-        }
-      } finally {
-        if (isMounted && !isBackgroundPoll) {
-          setIsLoading(false);
-        }
+        setMetrics({ currentPrice, volume24h });
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching pool-specific metrics:', error);
+        setIsLoading(false);
       }
     };
 
-    // Initial fetch
-    fetchMetrics(false);
+    fetchPoolMetrics();
+    
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchPoolMetrics, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [tokenA, tokenB, poolAddress]);
 
-    // Set up polling every 1 hour (background, no loading state)
-    // 24h volume doesn't need frequent updates - 1 hour is sufficient for accurate metrics while reducing egress
-    pollInterval = setInterval(() => {
-      if (isMounted) {
-        fetchMetrics(true); // Background poll
-      }
-    }, 60 * 60 * 1000); // 1 hour in milliseconds
-
-    // Cleanup
-    return () => {
-      isMounted = false;
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
-    };
-  }, [fromToken, toToken, poolAddress]);
-
-  return { metrics, isLoading, error };
+  return { metrics, isLoading };
 }
-

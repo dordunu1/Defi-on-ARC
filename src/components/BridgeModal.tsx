@@ -694,8 +694,16 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 ${
                   !isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
+                    : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white active:scale-95'
                 }`}
+                style={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : {
+                  boxShadow: `
+                    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                    0 4px 12px rgba(251, 146, 60, 0.4),
+                    0 2px 4px rgba(0, 0, 0, 0.1)
+                  `,
+                }}
               >
                 {state.isLoading ? 'Processing...' : `Bridge ${selectedToken}`}
               </button>
@@ -803,7 +811,15 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                     reset();
                     setAmount('');
                   }}
-                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3 bg-orange-500 text-white rounded-xl font-semibold text-base sm:text-lg hover:bg-orange-600 active:bg-orange-700 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-xl"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-semibold text-base sm:text-lg transition-all duration-200 cursor-pointer"
+                  style={{
+                    boxShadow: `
+                      inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                      inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                      0 4px 12px rgba(251, 146, 60, 0.4),
+                      0 2px 4px rgba(0, 0, 0, 0.1)
+                    `,
+                  }}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
@@ -1170,11 +1186,13 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 p-4 bg-gradient-to-r from-orange-400 to-orange-500 rounded-xl text-white text-center font-semibold"
+                  className="mt-4 p-4 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl text-white text-center font-semibold"
                   style={{
                     boxShadow: `
-                      0 4px 12px rgba(251, 146, 60, 0.3),
-                      inset 0 1px 0 rgba(255, 255, 255, 0.2)
+                      inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                      inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                      0 4px 12px rgba(251, 146, 60, 0.4),
+                      0 2px 4px rgba(0, 0, 0, 0.1)
                     `,
                   }}
                 >

@@ -1380,8 +1380,16 @@ export default function Swap() {
           className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 relative z-0 flex items-center justify-center gap-2 ${
             !isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
+              : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white active:scale-95'
           }`}
+          style={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade ? {} : {
+            boxShadow: `
+              inset 0 2px 4px rgba(255, 255, 255, 0.3),
+              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+              0 4px 12px rgba(251, 146, 60, 0.4),
+              0 2px 4px rgba(0, 0, 0, 0.1)
+            `,
+          }}
           whileHover={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade ? {} : { scale: 1.02 }}
           whileTap={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade ? {} : { scale: 0.98 }}
         >

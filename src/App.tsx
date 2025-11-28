@@ -15,6 +15,7 @@ import XFollowFAB from './components/XFollowFAB';
 import DiscordWidget from './components/DiscordWidget';
 import ChangelogDocsWrapper from './components/ChangelogDocsWrapper';
 import VersionUpdateModal from './components/VersionUpdateModal';
+import { MovingCoins } from './components/MovingCoins';
 import { SwapEventsCacheProvider } from './contexts/SwapEventsCache';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { Home } from 'lucide-react';
@@ -45,6 +46,7 @@ function AppContent() {
 
   const { address, isConnected } = useAccount();
   const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -62,16 +64,26 @@ function AppContent() {
     }
   }, [updateAvailable, forceRefresh]);
 
+
   // Check if we're on the landing page route
   const isLandingPage = location.pathname === '/';
 
   return (
     <>
       {isLandingPage ? (
-        <LandingPage onGetStarted={() => navigate('/bridge')} />
+        <>
+          <LandingPage 
+            onGetStarted={() => navigate('/bridge')} 
+            onOpenDocs={() => setDocsOpen(true)}
+          />
+          <ChangelogDocsWrapper docsOpen={docsOpen} onDocsOpenChange={setDocsOpen} />
+        </>
       ) : (
-        <div className="min-h-screen bg-orange-50 flex items-start justify-center p-3 sm:p-4 md:p-8">
-          <div className="w-full max-w-5xl mt-4 sm:mt-6 md:mt-8">
+        <div className="min-h-screen bg-dex-bg flex items-start justify-center p-3 sm:p-4 md:p-8 relative overflow-hidden">
+          {/* Background Animated Scene */}
+          <MovingCoins />
+          
+          <div className="w-full max-w-5xl mt-4 sm:mt-6 md:mt-8 relative z-10">
             {/* Header with Wallet Connect */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4">
               <div className="flex items-center gap-4">
@@ -127,7 +139,7 @@ function AppContent() {
           <XFollowFAB />
           
           {/* Changelog and Docs */}
-          <ChangelogDocsWrapper />
+          <ChangelogDocsWrapper docsOpen={docsOpen} onDocsOpenChange={setDocsOpen} />
 
           {/* Version Update Modal */}
           <VersionUpdateModal

@@ -51,10 +51,18 @@ export default function Navigation() {
                 {/* Active background */}
                 {isActive && (
                   <motion.div
-                    className="absolute inset-0 bg-orange-500 rounded-xl"
+                    className="absolute inset-0 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl"
                     layoutId="activeTab"
                     initial={false}
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    style={{
+                      boxShadow: `
+                        inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                        0 4px 12px rgba(251, 146, 60, 0.4),
+                        0 2px 4px rgba(0, 0, 0, 0.1)
+                      `,
+                    }}
                   />
                 )}
                 

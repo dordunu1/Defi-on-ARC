@@ -1343,7 +1343,15 @@ function PoolCard({
                       tokenBSymbol: pool.tokenBSymbol,
                     });
                   }}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-orange-500 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-orange-600 hover:shadow-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl text-xs sm:text-sm font-medium transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                  style={{
+                    boxShadow: `
+                      inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                      inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                      0 4px 12px rgba(251, 146, 60, 0.4),
+                      0 2px 4px rgba(0, 0, 0, 0.1)
+                    `,
+                  }}
                 >
                   Add
                 </button>

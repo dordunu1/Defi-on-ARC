@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Book, 
@@ -20,6 +20,7 @@ import '../styles/neumorphic.css';
 
 interface DocsProps {
   changelogOpen?: boolean;
+  isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -1618,11 +1619,36 @@ const NeumorphicToggle: React.FC<{ checked: boolean; onChange: (checked: boolean
   </label>
 );
 
-export default function Docs({ changelogOpen = false, onOpenChange }: DocsProps) {
+export default function Docs({ changelogOpen = false, isOpen: externalIsOpen, onOpenChange }: DocsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [currentDoc, setCurrentDoc] = useState<string>('welcome');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Sync external isOpen prop with internal state
+  useEffect(() => {
+    if (externalIsOpen === undefined) return;
+    
+    if (externalIsOpen) {
+      // Open the modal
+      if (!isOpen) {
+        setIsClosing(false);
+        setIsOpen(true);
+      }
+    } else {
+      // Close the modal with animation
+      if (isOpen && !isClosing) {
+        setIsClosing(true);
+        setTimeout(() => {
+          setIsOpen(false);
+          setTimeout(() => {
+            setIsClosing(false);
+          }, 300);
+        }, 700);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalIsOpen]);
 
   const filteredNavItems = navItems.filter(item =>
     item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1775,25 +1801,6 @@ export default function Docs({ changelogOpen = false, onOpenChange }: DocsProps)
 
   return (
     <>
-      {/* Read Docs Button */}
-      {!isOpen && !changelogOpen && (
-        <motion.button
-          onClick={() => {
-            setIsOpen(true);
-            onOpenChange?.(true);
-          }}
-          className="fixed bottom-16 sm:bottom-6 left-4 sm:left-52 z-40 bg-orange-500 text-white rounded-full p-2.5 sm:p-3 md:p-4 shadow-2xl hover:bg-orange-600 transition-all flex items-center gap-1.5 sm:gap-2 group"
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.1 }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <Book className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span className="hidden sm:inline text-sm font-semibold">Read Docs</span>
-        </motion.button>
-      )}
-
       {/* Docs Modal */}
       <AnimatePresence>
         {(isOpen || isClosing) && (

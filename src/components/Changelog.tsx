@@ -138,7 +138,15 @@ export default function Changelog({ docsOpen = false, onOpenChange }: ChangelogP
       {!isOpen && !docsOpen && (
         <motion.button
           onClick={handleOpen}
-          className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 bg-orange-500 text-white rounded-full p-2.5 sm:p-3 md:p-4 shadow-2xl hover:bg-orange-600 transition-all flex items-center gap-1.5 sm:gap-2 group"
+          className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-full p-2.5 sm:p-3 md:p-4 transition-all flex items-center gap-1.5 sm:gap-2 group"
+          style={{
+            boxShadow: `
+              inset 0 2px 4px rgba(255, 255, 255, 0.3),
+              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+              0 4px 12px rgba(251, 146, 60, 0.4),
+              0 2px 4px rgba(0, 0, 0, 0.1)
+            `,
+          }}
           initial={{ scale: 0 }}
           animate={{ 
             scale: 1,

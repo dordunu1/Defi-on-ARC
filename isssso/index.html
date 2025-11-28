@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IsoDex - Bridge & Swap</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              dex: {
+                bg: '#F9FAFB', // Light gray background
+                card: '#FFFFFF', // White card
+                text: '#111827', // Dark text
+                textMuted: '#6B7280', // Gray text
+                accent: '#EA580C', // Orange-600
+                accentHover: '#C2410C', // Orange-700
+                lightOrange: '#FFF7ED', // Orange-50
+                border: '#E5E7EB', // Gray-200
+              }
+            },
+            animation: {
+              'float': 'float 6s ease-in-out infinite',
+              'stream-slide': 'streamSlide 10s linear infinite',
+              'stream-slide-reverse': 'streamSlideReverse 10s linear infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+              streamSlide: {
+                '0%': { transform: 'translateX(-100%) translateY(-100%)' },
+                '100%': { transform: 'translateX(100%) translateY(100%)' },
+              },
+              streamSlideReverse: {
+                '0%': { transform: 'translateX(100%) translateY(100%)' },
+                '100%': { transform: 'translateX(-100%) translateY(-100%)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #F9FAFB;
+        color: #111827;
+        overflow-x: hidden;
+      }
+      /* Isometric Utilities */
+      .iso-container {
+        transform: rotateX(60deg) rotateZ(-45deg);
+        transform-style: preserve-3d;
+      }
+      .iso-item {
+        transform-style: preserve-3d;
+      }
+      
+      /* Smooth scrolling */
+      html {
+        scroll-behavior: smooth;
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #F9FAFB; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #D1D5DB; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #9CA3AF; 
+      }
+
+      .perspective-card {
+        perspective: 1000px;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
