@@ -93,6 +93,7 @@ export default function Pools() {
   const [dailyMetricsMap, setDailyMetricsMap] = useState<Map<string, { volume: number; fees: number }>>(new Map());
   const [volumeFeesPeriod, setVolumeFeesPeriod] = useState<'all' | 7 | 30 | 90>('all'); // Filter for volume/fees period
   const [showLowTVLPools, setShowLowTVLPools] = useState(false); // State for expanding low TVL pools section
+  const [showERC20Pools, setShowERC20Pools] = useState(false); // State for expanding ERC20-to-ERC20 pools section
   const isArcTestnet = chainId === 5042002;
 
   // Supabase configuration
@@ -526,7 +527,13 @@ export default function Pools() {
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  // Filter pools with TVL >= 10000 (default view)
+  // Helper function to check if a pool is ERC20-to-ERC20 (neither token is USDC)
+  const isERC20ToERC20Pool = useCallback((pool: PoolInfo): boolean => {
+    const usdcAddress = TOKENS.USDC.address.toLowerCase();
+    return pool.tokenA.toLowerCase() !== usdcAddress && pool.tokenB.toLowerCase() !== usdcAddress;
+  }, []);
+
+  // Filter pools with TVL >= 10000 (default view) - only USDC pairs
   const filteredPools = useMemo(() => {
     const usdcAddress = TOKENS.USDC.address.toLowerCase();
     
@@ -536,6 +543,12 @@ export default function Pools() {
         return false;
       }
       
+      // Only show USDC pairs in main view
+      const hasUSDC = pool.tokenA.toLowerCase() === usdcAddress || pool.tokenB.toLowerCase() === usdcAddress;
+      if (!hasUSDC) {
+        return false; // Hide ERC20-to-ERC20 pools from main view
+      }
+      
       const matchesSearch = 
         pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -546,24 +559,20 @@ export default function Pools() {
       return matchesSearch;
     });
     
-    // Sort: pools with USDC first, then pools without USDC
-    return filtered.sort((a, b) => {
-      const aHasUSDC = a.tokenA.toLowerCase() === usdcAddress || a.tokenB.toLowerCase() === usdcAddress;
-      const bHasUSDC = b.tokenA.toLowerCase() === usdcAddress || b.tokenB.toLowerCase() === usdcAddress;
-      
-      if (aHasUSDC && !bHasUSDC) return -1; // a comes first
-      if (!aHasUSDC && bHasUSDC) return 1;  // b comes first
-      return 0; // Maintain existing order (by TVL descending from Supabase)
-    });
+    // Sort by TVL descending (already sorted from Supabase, but maintain order)
+    return filtered;
   }, [pools, searchQuery]);
 
-  // Filter pools with TVL < 10000 (low TVL pools - expandable section)
-  const lowTVLPools = useMemo(() => {
-    const usdcAddress = TOKENS.USDC.address.toLowerCase();
-    
+  // Filter ERC20-to-ERC20 pools (TVL >= 10000) - hidden under expandable button
+  const erc20ToERC20Pools = useMemo(() => {
     const filtered = pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
-      if (poolTVL >= 10000) {
+      if (poolTVL < 10000) {
+        return false;
+      }
+      
+      // Only show ERC20-to-ERC20 pools
+      if (!isERC20ToERC20Pool(pool)) {
         return false;
       }
       
@@ -577,16 +586,63 @@ export default function Pools() {
       return matchesSearch;
     });
     
-    // Sort: pools with USDC first, then pools without USDC
-    return filtered.sort((a, b) => {
-      const aHasUSDC = a.tokenA.toLowerCase() === usdcAddress || a.tokenB.toLowerCase() === usdcAddress;
-      const bHasUSDC = b.tokenA.toLowerCase() === usdcAddress || b.tokenB.toLowerCase() === usdcAddress;
+    return filtered;
+  }, [pools, searchQuery, isERC20ToERC20Pool]);
+
+  // Filter pools with TVL < 10000 (low TVL pools - expandable section) - only USDC pairs
+  const lowTVLPools = useMemo(() => {
+    const usdcAddress = TOKENS.USDC.address.toLowerCase();
+    
+    const filtered = pools.filter((pool) => {
+      const poolTVL = pool.totalLiquidity || 0;
+      if (poolTVL >= 10000) {
+        return false;
+      }
       
-      if (aHasUSDC && !bHasUSDC) return -1; // a comes first
-      if (!aHasUSDC && bHasUSDC) return 1;  // b comes first
-      return 0; // Maintain existing order (by TVL descending from Supabase)
+      // Only show USDC pairs in low TVL section
+      const hasUSDC = pool.tokenA.toLowerCase() === usdcAddress || pool.tokenB.toLowerCase() === usdcAddress;
+      if (!hasUSDC) {
+        return false; // Hide ERC20-to-ERC20 pools from low TVL section
+      }
+      
+      const matchesSearch = 
+        pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return matchesSearch;
     });
+    
+    return filtered;
   }, [pools, searchQuery]);
+
+  // Filter low TVL ERC20-to-ERC20 pools (TVL < 10000) - hidden under expandable button
+  const lowTVLERC20Pools = useMemo(() => {
+    const filtered = pools.filter((pool) => {
+      const poolTVL = pool.totalLiquidity || 0;
+      if (poolTVL >= 10000) {
+        return false;
+      }
+      
+      // Only show ERC20-to-ERC20 pools
+      if (!isERC20ToERC20Pool(pool)) {
+        return false;
+      }
+      
+      const matchesSearch = 
+        pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return matchesSearch;
+    });
+    
+    return filtered;
+  }, [pools, searchQuery, isERC20ToERC20Pool]);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -900,6 +956,85 @@ export default function Pools() {
             ))
           )}
         </div>
+
+        {/* ERC20-to-ERC20 Pools Section (Expandable) */}
+        {!isLoading && (erc20ToERC20Pools.length > 0 || lowTVLERC20Pools.length > 0) && (
+          <div className="relative z-10 mt-6">
+            <motion.button
+              onClick={() => setShowERC20Pools(!showERC20Pools)}
+              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 transition-all"
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                  <Info className="w-5 h-5 text-gray-600" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-gray-900">
+                    ERC20 to ERC20 Pools ({erc20ToERC20Pools.length + lowTVLERC20Pools.length})
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Showing only USDC pools by default. Click to view ERC20 to ERC20 pools.
+                  </p>
+                </div>
+              </div>
+              <motion.div
+                animate={{ rotate: showERC20Pools ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="w-5 h-5 text-gray-600" />
+              </motion.div>
+            </motion.button>
+
+            <AnimatePresence>
+              {showERC20Pools && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-4 space-y-3">
+                    {/* High TVL ERC20 pools */}
+                    {erc20ToERC20Pools.map((pool) => (
+                      <PoolCard
+                        key={pool.poolAddress}
+                        pool={pool}
+                        filterOption={filterOption}
+                        onAddClick={(poolData) => {
+                          setSelectedPool(poolData);
+                          setShowAddModal(true);
+                        }}
+                        onRemoveClick={(poolData) => {
+                          setSelectedPool(poolData);
+                          setShowRemoveModal(true);
+                        }}
+                      />
+                    ))}
+                    {/* Low TVL ERC20 pools */}
+                    {lowTVLERC20Pools.map((pool) => (
+                      <PoolCard
+                        key={pool.poolAddress}
+                        pool={pool}
+                        filterOption={filterOption}
+                        onAddClick={(poolData) => {
+                          setSelectedPool(poolData);
+                          setShowAddModal(true);
+                        }}
+                        onRemoveClick={(poolData) => {
+                          setSelectedPool(poolData);
+                          setShowRemoveModal(true);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         {/* Low TVL Pools Section (Expandable) */}
         {!isLoading && lowTVLPools.length > 0 && (

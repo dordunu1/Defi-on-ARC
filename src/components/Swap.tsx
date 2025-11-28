@@ -169,6 +169,18 @@ export default function Swap() {
     }
     return TOKENS[token as TokenSymbol]?.decimals || 18;
   }, [customTokens]);
+
+  // Check if a token is USDC
+  const isUSDC = useCallback((token: TokenSymbol | Address): boolean => {
+    const tokenAddr = getTokenAddress(token);
+    if (!tokenAddr) return false;
+    return tokenAddr.toLowerCase() === TOKENS.USDC.address.toLowerCase();
+  }, [getTokenAddress]);
+
+  // Check if this is an ERC20 to ERC20 trade (neither token is USDC)
+  const isERC20ToERC20Trade = useMemo(() => {
+    return !isUSDC(fromToken) && !isUSDC(toToken);
+  }, [fromToken, toToken, isUSDC]);
   
   // Get pool address using the hook
   // For custom tokens (addresses), we need to handle them differently
@@ -714,6 +726,12 @@ export default function Swap() {
       return;
     }
     
+    // Check if this is an ERC20 to ERC20 trade (not allowed - only USDC pairs can be traded)
+    if (isERC20ToERC20Trade) {
+      setErrorMessage(`ERC20 LP pools are under maintenance. Only USDC pairs can be traded. Please select USDC as one of the tokens.`);
+      return;
+    }
+    
     // Check minimum swap value ($5 USD)
     const MIN_SWAP_USD = 5;
     const swapUSDValue = getSwapUSDValue;
@@ -736,6 +754,13 @@ export default function Swap() {
     if (!isConnected || !fromAmount || parseFloat(fromAmount) <= 0) return;
     if (!publicClient || !address) {
       setErrorMessage('Wallet not connected');
+      setShowReviewModal(false);
+      return;
+    }
+    
+    // Check if this is an ERC20 to ERC20 trade (not allowed - only USDC pairs can be traded)
+    if (isERC20ToERC20Trade) {
+      setErrorMessage(`ERC20 LP pools are under maintenance. Only USDC pairs can be traded. Please select USDC as one of the tokens.`);
       setShowReviewModal(false);
       return;
     }
@@ -988,7 +1013,10 @@ export default function Swap() {
                   value={fromAmount}
                   onChange={(e) => handleAmountChange(e.target.value, 'from')}
                   placeholder="0.0"
-                  className="w-full text-2xl md:text-3xl lg:text-4xl font-bold bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
+                  disabled={isERC20ToERC20Trade}
+                  className={`w-full text-2xl md:text-3xl lg:text-4xl font-bold bg-transparent border-none outline-none placeholder-gray-400 ${
+                    isERC20ToERC20Trade ? 'text-gray-400 cursor-not-allowed' : 'text-gray-900'
+                  }`}
                 />
               </div>
               <div className="relative">
@@ -1125,7 +1153,10 @@ export default function Swap() {
                   value={toAmount}
                   onChange={(e) => handleAmountChange(e.target.value, 'to')}
                   placeholder="0.0"
-                  className="w-full text-2xl md:text-3xl lg:text-4xl font-bold bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
+                  disabled={isERC20ToERC20Trade}
+                  className={`w-full text-2xl md:text-3xl lg:text-4xl font-bold bg-transparent border-none outline-none placeholder-gray-400 ${
+                    isERC20ToERC20Trade ? 'text-gray-400 cursor-not-allowed' : 'text-gray-900'
+                  }`}
                   readOnly
                 />
               </div>
@@ -1318,6 +1349,17 @@ export default function Swap() {
           </div>
         )}
 
+        {/* Warning for ERC20 to ERC20 trade */}
+        {isERC20ToERC20Trade && isConnected && (
+          <div className="mb-4 p-3 bg-orange-50/80 rounded-xl border border-orange-200/50 flex items-start gap-2 relative z-10">
+            <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-orange-800">
+              <p className="font-medium">ERC20 LP Pools Under Maintenance</p>
+              <p className="text-xs mt-1">ERC20 to ERC20 trades are temporarily unavailable. Only USDC pairs can be traded. Please select USDC as one of the tokens.</p>
+            </div>
+          </div>
+        )}
+
         {/* Success Message removed - now using SwapSuccessModal component */}
 
         {/* Error Message - Only show when not in modal */}
@@ -1334,14 +1376,14 @@ export default function Swap() {
         {/* Swap Button */}
         <motion.button
           onClick={handleSwapClick}
-          disabled={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork}
+          disabled={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade}
           className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 relative z-0 flex items-center justify-center gap-2 ${
-            !isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork
+            !isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
           }`}
-          whileHover={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork ? {} : { scale: 1.02 }}
-          whileTap={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork ? {} : { scale: 0.98 }}
+          whileHover={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade ? {} : { scale: 1.02 }}
+          whileTap={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork || isERC20ToERC20Trade ? {} : { scale: 0.98 }}
         >
           {(isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork) && <Loader2 className="w-5 h-5 animate-spin" />}
           {!isConnected
@@ -1350,6 +1392,8 @@ export default function Swap() {
             ? 'Adding Arc Testnet...'
             : !isArcTestnet
             ? 'Add Arc Testnet'
+            : isERC20ToERC20Trade
+            ? 'Select USDC Pair'
             : !fromAmount || parseFloat(fromAmount) <= 0
             ? 'Enter Amount'
             : isCalculatingOutput
