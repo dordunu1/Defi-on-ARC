@@ -11,6 +11,16 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2025-12-18',
+    version: 'v2.3.0',
+    changes: [
+      '🚀 Migrated from Netlify to Vercel for improved performance and reliability',
+      'New hosting URL: https://defi-on-arc.vercel.app',
+      'Automatic redirect from old Netlify domain to new Vercel deployment',
+      'Improved build times and global edge network distribution',
+    ],
+  },
+  {
     date: '2025-11-16',
     version: 'v2.2.0',
     changes: [
