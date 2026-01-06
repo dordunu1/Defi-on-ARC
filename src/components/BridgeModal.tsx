@@ -22,7 +22,7 @@ const BRIDGE_MAINTENANCE_MODE = import.meta.env.VITE_BRIDGE_MAINTENANCE_MODE ===
 
 export default function BridgeModal({ isOpen = true, onClose, asPage = false }: BridgeModalProps) {
   const { address, isConnected, chainId } = useAccount();
-  
+
   const [amount, setAmount] = useState('');
   const selectedToken: BridgeToken = 'USDC'; // Only USDC supported
   const [direction, setDirection] = useState<BridgeDirection>('sepolia-to-arc');
@@ -60,7 +60,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   // Use stored direction from bridge state if available (for success screen), otherwise use current direction
   const activeDirection = state.direction || direction;
-  
+
   // Determine source chain ID based on active direction
   const sourceChainId = activeDirection === 'sepolia-to-arc' ? SEPOLIA_CHAIN_ID : ARC_CHAIN_ID;
   const destinationChainId = activeDirection === 'sepolia-to-arc' ? ARC_CHAIN_ID : SEPOLIA_CHAIN_ID;
@@ -89,7 +89,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
-    query: { 
+    query: {
       enabled: !!address && isConnected && !!sourceTokenInfo && currentChainId === sourceChainId,
       // Refresh every 5 seconds
       refetchInterval: 5000,
@@ -99,7 +99,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   // For source chain when not connected to it, use separate publicClient
   const sourcePublicClient = useMemo(() => {
     if (currentChainId === sourceChainId || !sourceTokenInfo) return null; // Use wagmi when connected
-    
+
     if (sourceChainId === SEPOLIA_CHAIN_ID) {
       return createPublicClient({
         chain: sepolia,
@@ -189,7 +189,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   // Create a public client for the destination chain
   const destinationPublicClient = useMemo(() => {
     if (!destinationTokenInfo) return null;
-    
+
     if (destinationChainId === SEPOLIA_CHAIN_ID) {
       return createPublicClient({
         chain: sepolia,
@@ -307,14 +307,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   // Timer effect during bridging - starts when isLoading becomes true
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    
+
     if (state.isLoading) {
       // Start timer when bridge begins
       if (!bridgeStartTime) {
         setBridgeStartTime(Date.now());
         setElapsedTime(0);
       }
-      
+
       interval = setInterval(() => {
         if (bridgeStartTime) {
           const elapsed = Math.floor((Date.now() - bridgeStartTime) / 1000);
@@ -326,7 +326,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
       setElapsedTime(0);
       setBridgeStartTime(null);
     }
-    
+
     return () => {
       if (interval) clearInterval(interval);
     };
@@ -343,9 +343,9 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     // 4. We're not in error state
     // 5. Ensure we're not in a loading state (shouldn't happen but defensive)
     if (
-      state.status === 'success' && 
+      state.status === 'success' &&
       state.currentStep === 4 &&
-      state.receiveTxHash && 
+      state.receiveTxHash &&
       !state.error &&
       !state.isLoading
     ) {
@@ -360,19 +360,19 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
         const timeLeft = animationEnd - Date.now();
 
         if (timeLeft <= 0) {
-        clearInterval(interval);
+          clearInterval(interval);
           return;
         }
 
         const particleCount = 50 * (timeLeft / duration);
-        
+
         // Launch from left side
         confetti({
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
         });
-        
+
         // Launch from right side
         confetti({
           ...defaults,
@@ -445,7 +445,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const content = (
     <div className={`${asPage ? 'w-full max-w-2xl mx-auto px-4' : ''}`}>
-    <motion.div
+      <motion.div
         className="bg-white rounded-3xl p-6 md:p-8 border border-orange-200 shadow-xl relative overflow-hidden"
         style={{
           boxShadow: `
@@ -471,14 +471,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             </p>
           </div>
           {!asPage && (
-          <motion.button
-            onClick={handleClose}
+            <motion.button
+              onClick={handleClose}
               className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center transition-all duration-300 shadow-sm"
-            whileHover={{ scale: 1.05, y: -2 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <X className="w-5 h-5 text-gray-600" />
-          </motion.button>
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </motion.button>
           )}
         </div>
 
@@ -511,9 +511,9 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   <div className="text-center flex-1 w-full sm:w-auto">
                     <p className="text-xs text-gray-600 mb-1">From</p>
                     <div className="flex items-center justify-center space-x-2 mb-1">
-                      <img 
-                        src={sourceChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"} 
-                        alt={sourceChainName} 
+                      <img
+                        src={sourceChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
+                        alt={sourceChainName}
                         className="w-5 h-5 sm:w-6 sm:h-6"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
@@ -537,9 +537,9 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   <div className="text-center flex-1 w-full sm:w-auto">
                     <p className="text-xs text-gray-600 mb-1">To</p>
                     <div className="flex items-center justify-center space-x-2 mb-1">
-                      <img 
-                        src={destinationChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"} 
-                        alt={destinationChainName} 
+                      <img
+                        src={destinationChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
+                        alt={destinationChainName}
                         className="w-5 h-5 sm:w-6 sm:h-6"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
@@ -552,41 +552,41 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 </div>
               </div>
 
-               {/* Token Display */}
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                   Token
-                 </label>
-                 <div className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-gray-50 flex items-center justify-between">
-                   <div className="flex items-center space-x-3">
-                     <img 
-                       src="/usdc.svg" 
-                       alt="USDC" 
-                       className="w-6 h-6"
-                       onError={(e) => {
-                         // Hide icon if it fails to load
-                         (e.target as HTMLImageElement).style.display = 'none';
-                       }}
-                     />
-                     <div>
-                       <span className="font-medium text-gray-900">USDC</span>
-                       <span className="text-xs text-gray-500 ml-2">(USD Coin)</span>
-                     </div>
-                   </div>
-                 </div>
-                 <p className="text-xs text-gray-500 mt-2">
-                   Bridge Kit supports USDC for bidirectional bridging between Sepolia and Arc Testnet
-                 </p>
-               </div>
+              {/* Token Display */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Token
+                </label>
+                <div className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-gray-50 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <img
+                      src="/usdc.svg"
+                      alt="USDC"
+                      className="w-6 h-6"
+                      onError={(e) => {
+                        // Hide icon if it fails to load
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                    <div>
+                      <span className="font-medium text-gray-900">USDC</span>
+                      <span className="text-xs text-gray-500 ml-2">(USD Coin)</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Bridge Kit supports USDC for bidirectional bridging between Sepolia and Arc Testnet
+                </p>
+              </div>
 
               {/* Token Balance Display */}
               {isConnected && address && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 sm:p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
                     <div className="flex items-center space-x-2">
-                      <img 
-                        src="/usdc.svg" 
-                        alt="USDC" 
+                      <img
+                        src="/usdc.svg"
+                        alt="USDC"
                         className="w-5 h-5"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
@@ -601,7 +601,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           </div>
                         ) : (
                           <p className="text-lg font-bold text-orange-900">
-                            {parseFloat(tokenBalance) > 0 
+                            {parseFloat(tokenBalance) > 0
                               ? `${parseFloat(tokenBalance).toFixed(2)} ${selectedToken}`
                               : `0.00 ${selectedToken}`
                             }
@@ -658,9 +658,9 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   className="w-full px-3 sm:px-4 py-2 sm:py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all text-base sm:text-lg"
                   disabled={state.isLoading}
                 />
-                 <p className="text-xs text-gray-500 mt-2">
-                   Enter the amount to bridge to {destinationChainName}
-                 </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Enter the amount to bridge to {destinationChainName}
+                </p>
               </div>
 
               {/* Warning if not on source chain */}
@@ -671,7 +671,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                     <div className="text-sm text-yellow-800">
                       <p className="font-medium">Auto-switch to {sourceChainName}</p>
                       <p className="text-xs mt-1">
-                        Bridge Kit will automatically switch your network to {sourceChainName} when you start the bridge process. 
+                        Bridge Kit will automatically switch your network to {sourceChainName} when you start the bridge process.
                       </p>
                     </div>
                   </div>
@@ -691,11 +691,10 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
               <button
                 onClick={handleBridge}
                 disabled={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading}
-                className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 ${
-                  !isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white active:scale-95'
-                }`}
+                className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 ${!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white active:scale-95'
+                  }`}
                 style={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : {
                   boxShadow: `
                     inset 0 2px 4px rgba(255, 255, 255, 0.3),
@@ -721,60 +720,60 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 <p className="text-sm text-gray-600 mb-4">
                   Your {selectedToken} has been successfully transferred from {sourceChainName} to {destinationChainName}.
                 </p>
-                
-                 {/* Transaction Links */}
-                 <div className="space-y-2 mb-4">
-                   {state.sourceTxHash && (
-                     <a
-                       href={
-                         sourceChainId === SEPOLIA_CHAIN_ID
-                           ? `https://sepolia.etherscan.io/tx/${state.sourceTxHash}`
-                           : `https://testnet.arcscan.app/tx/${state.sourceTxHash}`
-                       }
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
-                     >
-                       <span>View {sourceChainName} Transaction</span>
-                       <ExternalLink className="w-4 h-4" />
-                     </a>
-                   )}
-                   {state.receiveTxHash ? (
-                     <a
-                       href={
-                         destinationChainId === SEPOLIA_CHAIN_ID
-                           ? `https://sepolia.etherscan.io/tx/${state.receiveTxHash}`
-                           : `https://testnet.arcscan.app/tx/${state.receiveTxHash}`
-                       }
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
-                     >
-                       <span>View Receive Message Transaction</span>
-                       <ExternalLink className="w-4 h-4" />
-                     </a>
-                   ) : (
-                     <div className="text-xs text-gray-500 pt-2">
-                       <p>Receive message transaction hash will be available after confirmation.</p>
-                       <p className="mt-1">Check the browser console for details or {destinationChainName} explorer later.</p>
-                     </div>
-                   )}
-                   {!state.sourceTxHash && !state.receiveTxHash && state.result && (state.result as any)?.txHash && (
-                     <a
-                       href={
-                         sourceChainId === SEPOLIA_CHAIN_ID
-                           ? `https://sepolia.etherscan.io/tx/${(state.result as any).txHash}`
-                           : `https://testnet.arcscan.app/tx/${(state.result as any).txHash}`
-                       }
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
-                     >
-                       <span>View Transaction</span>
-                       <ExternalLink className="w-4 h-4" />
-                     </a>
-                   )}
-                 </div>
+
+                {/* Transaction Links */}
+                <div className="space-y-2 mb-4">
+                  {state.sourceTxHash && (
+                    <a
+                      href={
+                        sourceChainId === SEPOLIA_CHAIN_ID
+                          ? `https://sepolia.etherscan.io/tx/${state.sourceTxHash}`
+                          : `https://testnet.arcscan.app/tx/${state.sourceTxHash}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
+                    >
+                      <span>View {sourceChainName} Transaction</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                  {state.receiveTxHash ? (
+                    <a
+                      href={
+                        destinationChainId === SEPOLIA_CHAIN_ID
+                          ? `https://sepolia.etherscan.io/tx/${state.receiveTxHash}`
+                          : `https://testnet.arcscan.app/tx/${state.receiveTxHash}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
+                    >
+                      <span>View Receive Message Transaction</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  ) : (
+                    <div className="text-xs text-gray-500 pt-2">
+                      <p>Receive message transaction hash will be available after confirmation.</p>
+                      <p className="mt-1">Check the browser console for details or {destinationChainName} explorer later.</p>
+                    </div>
+                  )}
+                  {!state.sourceTxHash && !state.receiveTxHash && state.result && (state.result as any)?.txHash && (
+                    <a
+                      href={
+                        sourceChainId === SEPOLIA_CHAIN_ID
+                          ? `https://sepolia.etherscan.io/tx/${(state.result as any).txHash}`
+                          : `https://testnet.arcscan.app/tx/${(state.result as any).txHash}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
+                    >
+                      <span>View Transaction</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
               </div>
               <motion.button
                 onClick={(e) => {
@@ -843,15 +842,15 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
               // Don't close during active bridging
             }}
           >
-      <motion.div
+            <motion.div
               initial={{ scale: 0.8, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.8, opacity: 0, y: 20 }}
               transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-        onClick={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden"
-        style={{
-          boxShadow: `
+              style={{
+                boxShadow: `
             inset 0 1px 0 rgba(255, 255, 255, 0.9),
             inset 0 -1px 0 rgba(0, 0, 0, 0.05),
             0 0 30px rgba(251, 146, 60, 0.15),
@@ -859,8 +858,8 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             0 10px 30px rgba(0, 0, 0, 0.1),
             0 4px 8px rgba(0, 0, 0, 0.05)
           `,
-        }}
-      >
+              }}
+            >
               {/* Close Button */}
               <button
                 onClick={() => {
@@ -872,7 +871,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 <X className="w-5 h-5" />
               </button>
 
-        {/* Header */}
+              {/* Header */}
               <motion.h3
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -884,7 +883,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
               <div className="space-y-4">
                 {/* Step 1: Approve USDC */}
-            <motion.div
+                <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.2 }}
@@ -900,7 +899,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   <div className="flex items-center gap-4">
                     <div className="relative flex-shrink-0">
                       {state.currentStep >= 1 ? (
-                <motion.div
+                        <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
                           transition={{ type: 'spring', stiffness: 200 }}
@@ -915,7 +914,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           }}
                         >
                           <CheckCircle2 className="w-6 h-6 text-white" />
-                </motion.div>
+                        </motion.div>
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                           style={{
@@ -926,38 +925,37 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           }}
                         >
                           <div className="w-6 h-6 rounded-full bg-white" />
-                  </div>
-                )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${
-                        state.currentStep >= 1 ? 'text-orange-600' : 'text-gray-500'
-                      }`}>
+                      <p className={`font-semibold text-sm ${state.currentStep >= 1 ? 'text-orange-600' : 'text-gray-500'
+                        }`}>
                         Approve USDC
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {state.currentStep >= 1 ? 'Approval completed' : 'Allow the contract to spend your tokens'}
                       </p>
                     </div>
-              </div>
+                  </div>
                 </motion.div>
 
                 {/* Step 2: Burn on source */}
-                    <motion.div
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 }}
-                      className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
-                      style={{
-                        boxShadow: `
+                  className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                  style={{
+                    boxShadow: `
                           inset 2px 2px 4px rgba(255, 255, 255, 0.8),
                           inset -2px -2px 4px rgba(0, 0, 0, 0.1),
                           0 4px 8px rgba(0, 0, 0, 0.05)
                         `,
-                      }}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="relative flex-shrink-0">
+                  }}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-shrink-0">
                       {state.currentStep >= 2 ? (
                         <motion.div
                           initial={{ scale: 0 }}
@@ -976,18 +974,18 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           <CheckCircle2 className="w-6 h-6 text-white" />
                         </motion.div>
                       ) : state.currentStep === 1 ? (
-                            <motion.div
-                              className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
-                              style={{
-                                boxShadow: `
+                        <motion.div
+                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                          style={{
+                            boxShadow: `
                                   inset 0 2px 4px rgba(255, 255, 255, 0.5),
                                   inset 0 -2px 4px rgba(0, 0, 0, 0.2),
                                   0 4px 12px rgba(251, 146, 60, 0.4)
                                 `,
-                              }}
-                            >
-                              <Loader2 className="w-6 h-6 text-white animate-spin" />
-                            </motion.div>
+                          }}
+                        >
+                          <Loader2 className="w-6 h-6 text-white animate-spin" />
+                        </motion.div>
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
                           style={{
@@ -1002,21 +1000,20 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${
-                        state.currentStep >= 2
-                          ? 'text-orange-600'
-                          : state.currentStep === 1
+                      <p className={`font-semibold text-sm ${state.currentStep >= 2
+                        ? 'text-orange-600'
+                        : state.currentStep === 1
                           ? 'text-orange-600'
                           : 'text-gray-500'
-                      }`}>
+                        }`}>
                         Burn on source
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {state.currentStep >= 2
                           ? 'Burn completed'
                           : state.currentStep === 1
-                          ? 'Processing...'
-                          : 'Pending...'}
+                            ? 'Processing...'
+                            : 'Pending...'}
                       </p>
                     </div>
                   </div>
@@ -1039,22 +1036,22 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   <div className="flex items-center gap-4">
                     <div className="relative flex-shrink-0">
                       {state.currentStep >= 3 ? (
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
                           transition={{ type: 'spring', stiffness: 200 }}
                           className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center"
-                              style={{
-                                boxShadow: `
+                          style={{
+                            boxShadow: `
                                   inset 0 2px 4px rgba(255, 255, 255, 0.5),
                                   inset 0 -2px 4px rgba(0, 0, 0, 0.2),
                               0 0 20px rgba(251, 146, 60, 0.4),
                               0 4px 12px rgba(251, 146, 60, 0.3)
                                 `,
-                              }}
-                            >
-                              <CheckCircle2 className="w-6 h-6 text-white" />
-                            </motion.div>
+                          }}
+                        >
+                          <CheckCircle2 className="w-6 h-6 text-white" />
+                        </motion.div>
                       ) : state.currentStep === 2 ? (
                         <motion.div
                           className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center"
@@ -1070,37 +1067,36 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                         </motion.div>
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
-                              style={{
-                                boxShadow: `
+                          style={{
+                            boxShadow: `
                                   inset 0 2px 4px rgba(255, 255, 255, 0.9),
                                   inset 0 -2px 4px rgba(0, 0, 0, 0.1)
                                 `,
-                              }}
-                            >
-                              <div className="w-6 h-6 rounded-full bg-white" />
-                            </div>
-                          )}
+                          }}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-white" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${
-                        state.currentStep >= 3
-                          ? 'text-orange-600'
-                          : state.currentStep === 2
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold text-sm ${state.currentStep >= 3
+                        ? 'text-orange-600'
+                        : state.currentStep === 2
                           ? 'text-blue-600'
                           : 'text-gray-500'
-                      }`}>
+                        }`}>
                         Attestation...
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
                         {state.currentStep >= 3
                           ? 'Attestation fetched'
                           : state.currentStep === 2
-                          ? 'Fetching attestation from Circle API...'
-                          : 'Pending...'}
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
+                            ? 'Fetching attestation from Circle API...'
+                            : 'Pending...'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
 
                 {/* Step 4: Mint on destination chain */}
                 <motion.div
@@ -1134,7 +1130,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           }}
                         >
                           <CheckCircle2 className="w-6 h-6 text-white" />
-            </motion.div>
+                        </motion.div>
                       ) : state.currentStep === 3 ? (
                         <motion.div
                           className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
@@ -1158,28 +1154,27 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           }}
                         >
                           <div className="w-6 h-6 rounded-full bg-white" />
-                </div>
-              )}
-            </div>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${
-                        state.currentStep >= 4
-                          ? 'text-orange-600'
-                          : state.currentStep === 3
+                      <p className={`font-semibold text-sm ${state.currentStep >= 4
+                        ? 'text-orange-600'
+                        : state.currentStep === 3
                           ? 'text-orange-600'
                           : 'text-gray-500'
-                      }`}>
+                        }`}>
                         Mint on {destinationChainName}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {state.currentStep >= 4
                           ? 'Mint completed'
                           : state.currentStep === 3
-                          ? 'Processing receive message...'
-                          : 'Pending...'}
+                            ? 'Processing receive message...'
+                            : 'Pending...'}
                       </p>
-                </div>
-              </div>
+                    </div>
+                  </div>
                 </motion.div>
 
                 {/* Status Bar */}
@@ -1197,7 +1192,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   }}
                 >
                   Bridging...
-      </motion.div>
+                </motion.div>
               </div>
             </motion.div>
           </motion.div>
@@ -1220,8 +1215,8 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
       onClick={handleClose}
     >
       <div onClick={(e) => e.stopPropagation()}>
-          {content}
-        </div>
+        {content}
+      </div>
     </motion.div>
   );
 }

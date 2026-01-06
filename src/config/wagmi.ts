@@ -15,15 +15,15 @@ const ARC_RPC_URLS = [
 const ARC_RPC_URL = ARC_RPC_URLS[0];
 const SEPOLIA_RPC_URLS = ALCHEMY_API_KEY
   ? [
-      'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode (primary - no rate limits)
-      'https://rpc.sepolia.org', // Sepolia Foundation (fallback 1 - reliable)
-      `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, // Alchemy (fallback 2 - use last to avoid rate limits)
-    ]
+    'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode (primary - no rate limits)
+    'https://rpc.sepolia.org', // Sepolia Foundation (fallback 1 - reliable)
+    `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, // Alchemy (fallback 2 - use last to avoid rate limits)
+  ]
   : [
-      'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode (primary)
-      'https://rpc.sepolia.org', // Sepolia Foundation (fallback)
-      'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161', // Infura (fallback)
-    ];
+    'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode (primary)
+    'https://rpc.sepolia.org', // Sepolia Foundation (fallback)
+    'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161', // Infura (fallback)
+  ];
 
 // Use first RPC as primary, but wagmi will fallback to others if needed
 const SEPOLIA_PRIMARY_RPC = SEPOLIA_RPC_URLS[0];

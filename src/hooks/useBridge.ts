@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { useAccount, useWalletClient, useSwitchChain } from "wagmi";
 import { BridgeKit } from "@circle-fin/bridge-kit";
 import { createAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
-import type { EIP1193Provider } from "viem";
+import { createPublicClient, http } from "viem";
+import { sepolia } from "viem/chains";
+import type { EIP1193Provider, Chain } from "viem";
 
 export type BridgeToken = 'USDC';
 export type BridgeStatus = "idle" | "bridging" | "success" | "error";
@@ -66,12 +68,44 @@ export function useBridge() {
 
   useEffect(() => {
     const bridgeKit = new BridgeKit();
-    bridgeKit.on("approve", () => setCurrentStep(1));
-    bridgeKit.on("burn", () => setCurrentStep(2));
-    bridgeKit.on("fetchAttestation", () => setCurrentStep(3));
-    bridgeKit.on("mint", () => setCurrentStep(4));
+    // Events fire when steps START, but we need to track progress
+    bridgeKit.on("approve", (data: any) => {
+      console.log("BridgeKit approve event - data:", data);
+      console.log("BridgeKit approve event - data type:", typeof data);
+      setCurrentStep(1);
+      // Events might not have txHash - it's in result.steps instead
+      // But check anyway in case BridgeKit provides it
+      if (data?.txHash) {
+        console.log("Approve txHash from event:", data.txHash);
+        setSourceTxHash(data.txHash);
+      }
+    });
+    bridgeKit.on("burn", (data: any) => {
+      console.log("BridgeKit burn event:", data);
+      setCurrentStep(2);
+      // If there's a txHash, set it
+      if (data?.txHash) {
+        setSourceTxHash(data.txHash);
+      }
+    });
+    bridgeKit.on("fetchAttestation", (data: any) => {
+      console.log("BridgeKit fetchAttestation event:", data);
+      setCurrentStep(3);
+    });
+    bridgeKit.on("mint", (data: any) => {
+      console.log("BridgeKit mint event:", data);
+      setCurrentStep(4);
+      // If there's a txHash, set it
+      if (data?.txHash) {
+        setReceiveTxHash(data.txHash);
+      }
+      // Mark as success when mint event fires (step 4 = complete)
+      if (bridgeStatus === "bridging") {
+        setBridgeStatus("success");
+      }
+    });
     setKit(bridgeKit);
-  }, []);
+  }, [bridgeStatus]);
 
   const bridge = async (
     token: BridgeToken,
@@ -102,7 +136,66 @@ export function useBridge() {
 
     try {
       const provider = walletClient as unknown as EIP1193Provider;
-      const adapter = await createAdapterFromProvider({ provider });
+      
+      // Get Alchemy API key from environment
+      const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || '';
+      
+      // Custom RPC URLs - use Alchemy if available, otherwise use public RPCs
+      const SEPOLIA_RPC_URL = ALCHEMY_API_KEY
+        ? `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
+        : 'https://ethereum-sepolia-rpc.publicnode.com';
+      
+      const ARC_RPC_URL = ALCHEMY_API_KEY
+        ? `https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
+        : 'https://rpc.testnet.arc.network';
+      
+      // Create adapter with custom RPC endpoints
+      const adapter = await createAdapterFromProvider({
+        provider,
+        getPublicClient: ({ chain }: { chain: Chain }) => {
+          // Use custom RPC based on chain ID
+          if (chain.id === SEPOLIA_CHAIN_ID) {
+            return createPublicClient({
+              chain: sepolia,
+              transport: http(SEPOLIA_RPC_URL, {
+                retryCount: 3,
+                timeout: 10000,
+              }),
+            });
+          } else if (chain.id === ARC_CHAIN_ID) {
+            // Arc Testnet chain config
+            return createPublicClient({
+              chain: {
+                id: ARC_CHAIN_ID,
+                name: 'Arc Testnet',
+                network: 'arc-testnet',
+                nativeCurrency: {
+                  decimals: 6,
+                  name: 'USDC',
+                  symbol: 'USDC',
+                },
+                rpcUrls: {
+                  default: { http: [ARC_RPC_URL] },
+                  public: { http: [ARC_RPC_URL] },
+                },
+                blockExplorers: {
+                  default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
+                },
+              } as Chain,
+              transport: http(ARC_RPC_URL, {
+                retryCount: 3,
+                timeout: 10000,
+              }),
+            });
+          }
+          // Fallback to default for other chains
+          return createPublicClient({
+            chain,
+            transport: http(),
+          });
+        },
+      });
+      
       const arcChainVariants = ["Arc_Testnet", "Arc", "ARC"];
       const needsArcVariant = fromChain === "arc" || toChain === "arc";
       let result;
@@ -150,13 +243,28 @@ export function useBridge() {
         });
       }
 
-      // Extract transaction hashes
+      // Extract transaction hashes from result
       const resultAny = result as any;
       let extractedSourceTx: string | undefined;
       let extractedReceiveTx: string | undefined;
-      
+
+      console.log("Bridge result:", resultAny);
+      console.log("Bridge result state:", resultAny?.state);
+      console.log("Bridge result steps:", resultAny?.steps);
+
+      // Check if result has error state
+      if (resultAny?.state === 'error') {
+        console.error("BridgeKit returned error state:", resultAny);
+        const errorMsg = resultAny?.error?.message || "Bridge failed - check console for details";
+        setError(errorMsg);
+        setBridgeStatus("error");
+        setCurrentStep(0);
+        throw new Error(errorMsg);
+      }
+
       if (resultAny?.steps) {
         resultAny.steps.forEach((step: any) => {
+          console.log("Bridge step:", step.name, "txHash:", step.txHash, "state:", step.state);
           if (step.name === 'burn' && step.txHash) {
             extractedSourceTx = step.txHash;
             setSourceTxHash(step.txHash);
@@ -168,38 +276,85 @@ export function useBridge() {
           if (step.name === 'approve' && step.txHash && !extractedSourceTx) {
             extractedSourceTx = step.txHash;
             setSourceTxHash(step.txHash);
-            }
+          }
         });
       }
 
-      // Wait a bit for the event listeners to update currentStep (mint event fires asynchronously)
-      // The mint event listener will set currentStep to 4, but we check the transaction hash
-      // which is the definitive proof that the mint transaction was created
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Store result immediately so UI can access it
+      setResult(result);
 
-      // Mark as success if we have receiveTxHash (mint transaction was created)
-      // The currentStep will be updated by the event listener, but the hash is the source of truth
+      // BridgeKit's bridge() should complete when all steps are done
+      // If we already have the mint hash, we're done
       if (extractedReceiveTx) {
-        setResult(result);
         setBridgeStatus("success");
-        // Ensure currentStep is set to 4 if the event hasn't fired yet
         if (currentStep < 4) {
           setCurrentStep(4);
         }
-      } else {
-        // If mint transaction hash wasn't found, treat as error
-        const errorMsg = "Bridge incomplete: Mint transaction was not completed. Your tokens may still be in transit.";
-        setError(errorMsg);
-        setBridgeStatus("error");
-        setCurrentStep(0);
-        throw new Error(errorMsg);
+        return result;
       }
+
+      // If we don't have mint hash yet, check if bridge is still processing
+      // Wait up to 3 minutes for completion (Sepolia can be slow)
+      let attempts = 0;
+      const maxAttempts = 60; // 60 attempts * 3 seconds = 3 minutes
       
-      return result;
+      while (attempts < maxAttempts && !extractedReceiveTx) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Re-check result steps in case they were populated asynchronously
+        if (resultAny?.steps) {
+          resultAny.steps.forEach((step: any) => {
+            if (step.name === 'mint' && step.txHash) {
+              extractedReceiveTx = step.txHash;
+              setReceiveTxHash(step.txHash);
+            }
+          });
+        }
+        
+        // If currentStep reached 4, give it a bit more time for hash to appear
+        if (currentStep >= 4 && !extractedReceiveTx) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          // Final check
+          if (resultAny?.steps) {
+            resultAny.steps.forEach((step: any) => {
+              if (step.name === 'mint' && step.txHash) {
+                extractedReceiveTx = step.txHash;
+                setReceiveTxHash(step.txHash);
+              }
+            });
+          }
+          break;
+        }
+        
+        attempts++;
+      }
+
+      // If we got it, mark as success
+      if (extractedReceiveTx) {
+        setBridgeStatus("success");
+        if (currentStep < 4) {
+          setCurrentStep(4);
+        }
+        return result;
+      }
+
+      // If we still don't have it but reached step 4, mark as success anyway
+      // (the mint event fired, so bridge completed even if hash not in result)
+      if (currentStep >= 4) {
+        setBridgeStatus("success");
+        return result;
+      }
+
+      // If we still don't have it and didn't reach step 4, it's an error
+      const errorMsg = "Bridge incomplete: Mint transaction was not completed. Your tokens may still be in transit.";
+      setError(errorMsg);
+      setBridgeStatus("error");
+      setCurrentStep(0);
+      throw new Error(errorMsg);
     } catch (error: unknown) {
       console.error("Bridge error:", error);
       let errorMsg = error instanceof Error ? error.message : "Bridge failed";
-      
+
       if (errorMsg.includes("User rejected") || errorMsg.includes("User denied")) {
         errorMsg = "Transaction cancelled by user";
       } else if (errorMsg.includes("insufficient funds")) {
@@ -209,7 +364,7 @@ export function useBridge() {
       } else if (errorMsg.includes("Arc")) {
         errorMsg = "Arc Testnet may not be supported by Bridge Kit yet. Try using Circle Faucet or manual CCTP.";
       }
-      
+
       setError(errorMsg);
       setBridgeStatus("error");
       setCurrentStep(0);
