@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAccount, useWalletClient, useSwitchChain } from "wagmi";
 import { BridgeKit } from "@circle-fin/bridge-kit";
 import { createAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
@@ -68,22 +68,18 @@ export function useBridge() {
 
   useEffect(() => {
     const bridgeKit = new BridgeKit();
-    // Events fire when steps START, but we need to track progress
     bridgeKit.on("approve", (data: any) => {
       console.log("BridgeKit approve event - data:", data);
-      console.log("BridgeKit approve event - data type:", typeof data);
       setCurrentStep(1);
-      // Events might not have txHash - it's in result.steps instead
-      // But check anyway in case BridgeKit provides it
       if (data?.txHash) {
         console.log("Approve txHash from event:", data.txHash);
         setSourceTxHash(data.txHash);
       }
+      // Don't save during approval - only save from burn onwards
     });
     bridgeKit.on("burn", (data: any) => {
       console.log("BridgeKit burn event:", data);
       setCurrentStep(2);
-      // If there's a txHash, set it
       if (data?.txHash) {
         setSourceTxHash(data.txHash);
       }
@@ -95,11 +91,9 @@ export function useBridge() {
     bridgeKit.on("mint", (data: any) => {
       console.log("BridgeKit mint event:", data);
       setCurrentStep(4);
-      // If there's a txHash, set it
       if (data?.txHash) {
         setReceiveTxHash(data.txHash);
       }
-      // Mark as success when mint event fires (step 4 = complete)
       if (bridgeStatus === "bridging") {
         setBridgeStatus("success");
       }
@@ -136,19 +130,19 @@ export function useBridge() {
 
     try {
       const provider = walletClient as unknown as EIP1193Provider;
-      
+
       // Get Alchemy API key from environment
       const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || '';
-      
+
       // Custom RPC URLs - use Alchemy if available, otherwise use public RPCs
       const SEPOLIA_RPC_URL = ALCHEMY_API_KEY
         ? `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
         : 'https://ethereum-sepolia-rpc.publicnode.com';
-      
+
       const ARC_RPC_URL = ALCHEMY_API_KEY
         ? `https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
         : 'https://rpc.testnet.arc.network';
-      
+
       // Create adapter with custom RPC endpoints
       const adapter = await createAdapterFromProvider({
         provider,
@@ -195,7 +189,7 @@ export function useBridge() {
           });
         },
       });
-      
+
       const arcChainVariants = ["Arc_Testnet", "Arc", "ARC"];
       const needsArcVariant = fromChain === "arc" || toChain === "arc";
       let result;
@@ -297,10 +291,10 @@ export function useBridge() {
       // Wait up to 3 minutes for completion (Sepolia can be slow)
       let attempts = 0;
       const maxAttempts = 60; // 60 attempts * 3 seconds = 3 minutes
-      
+
       while (attempts < maxAttempts && !extractedReceiveTx) {
         await new Promise(resolve => setTimeout(resolve, 3000));
-        
+
         // Re-check result steps in case they were populated asynchronously
         if (resultAny?.steps) {
           resultAny.steps.forEach((step: any) => {
@@ -310,7 +304,7 @@ export function useBridge() {
             }
           });
         }
-        
+
         // If currentStep reached 4, give it a bit more time for hash to appear
         if (currentStep >= 4 && !extractedReceiveTx) {
           await new Promise(resolve => setTimeout(resolve, 5000));
@@ -325,7 +319,7 @@ export function useBridge() {
           }
           break;
         }
-        
+
         attempts++;
       }
 

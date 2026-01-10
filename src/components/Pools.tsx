@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, TrendingUp, ExternalLink, Search, Filter, AlertCircle, DollarSign, RefreshCw, ChevronDown, Info } from 'lucide-react';
+import { Layers, TrendingUp, ExternalLink, Search, Filter, AlertCircle, DollarSign, RefreshCw, ChevronDown, Info, Grid, LayoutList } from 'lucide-react';
 import { useAccount, useReadContract, usePublicClient } from 'wagmi';
 import { DEX_CONFIG } from '../config/dex';
 import { FACTORY_ABI, POOL_ABI, ERC20_ABI } from '../config/abis';
@@ -82,6 +82,7 @@ export default function Pools() {
   const { isConnected, address, chainId } = useAccount();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterOption, setFilterOption] = useState<'all' | 'my-pools'>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [pools, setPools] = useState<PoolInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -146,7 +147,7 @@ export default function Pools() {
       }
 
       const poolsData = await response.json();
-      
+
       // Fetch fees per pool from materialized view
       const feesResponse = await fetch(`${supabaseUrl}/rest/v1/pool_fees_total?select=pool_address,total_fees`, {
         headers: {
@@ -182,7 +183,7 @@ export default function Pools() {
 
       setPools(poolsList);
       setIsLoading(false);
-        } catch (error) {
+    } catch (error) {
       console.error('Error fetching pools:', error);
       setIsLoading(false);
     }
@@ -208,16 +209,16 @@ export default function Pools() {
 
     const usdcAddress = TOKENS.USDC.address.toLowerCase();
     const tokenAddrLower = tokenAddress.toLowerCase();
-    
+
     // First, try to find a direct USDC pair
     for (const pool of allPools) {
       const tokenA = pool.tokenA.toLowerCase();
       const tokenB = pool.tokenB.toLowerCase();
-      
+
       // Check if this pool has USDC
       if (tokenA === usdcAddress || tokenB === usdcAddress) {
         const otherToken = tokenA === usdcAddress ? tokenB : tokenA;
-        
+
         // If this pool matches our token
         if (otherToken === tokenAddrLower) {
           try {
@@ -250,12 +251,12 @@ export default function Pools() {
     for (const pool of allPools) {
       const tokenA = pool.tokenA.toLowerCase();
       const tokenB = pool.tokenB.toLowerCase();
-      
+
       // Check if this pool contains our token (but not USDC)
-      if ((tokenA === tokenAddrLower || tokenB === tokenAddrLower) && 
-          tokenA !== usdcAddress && tokenB !== usdcAddress) {
+      if ((tokenA === tokenAddrLower || tokenB === tokenAddrLower) &&
+        tokenA !== usdcAddress && tokenB !== usdcAddress) {
         const intermediateToken = tokenA === tokenAddrLower ? tokenB : tokenA;
-        
+
         // Try to find price of intermediate token via USDC
         const intermediatePrice = await getTokenPriceInUSD(intermediateToken as Address, allPools);
         if (intermediatePrice > 0) {
@@ -297,20 +298,20 @@ export default function Pools() {
   useEffect(() => {
     if (!isArcTestnet || !supabaseUrl || !supabaseKey) {
       setIsLoadingMetrics(false);
-        return;
-      }
+      return;
+    }
 
     const fetchMetricsFast = async () => {
       setIsLoadingMetrics(true);
-      
+
       try {
         const usdcAddress = USDC_ADDRESS.toLowerCase();
-      
+
         // OPTIMIZED: RPC functions now read from materialized views (pre-aggregated data)
         // Reads 1 row for totals, 1-90 rows for daily data (instead of scanning 90k+ events)
         let totalVolume = 0;
         let totalFees = 0;
-        
+
         // Fetch volume and fees based on selected period
         if (volumeFeesPeriod === 'all') {
           // Fetch all-time totals
@@ -329,7 +330,7 @@ export default function Pools() {
 
           if (!totalMetricsResponse.ok) {
             throw new Error('Failed to fetch total metrics');
-      }
+          }
 
           const totalMetrics = await totalMetricsResponse.json();
           totalVolume = totalMetrics[0]?.total_volume || 0;
@@ -345,9 +346,9 @@ export default function Pools() {
                 'Authorization': `Bearer ${supabaseKey}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({ 
+              body: JSON.stringify({
                 usdc_address: usdcAddress,
-                days_back: volumeFeesPeriod 
+                days_back: volumeFeesPeriod
               }),
             }
           );
@@ -356,7 +357,7 @@ export default function Pools() {
             throw new Error('Failed to fetch period metrics');
           }
 
-            const periodMetrics = await periodMetricsResponse.json();
+          const periodMetrics = await periodMetricsResponse.json();
           totalVolume = periodMetrics[0]?.total_volume || 0;
           totalFees = periodMetrics[0]?.total_fees || 0;
         }
@@ -373,9 +374,9 @@ export default function Pools() {
               'Authorization': `Bearer ${supabaseKey}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ 
-              usdc_address: usdcAddress, 
-              days_back: daysBack 
+            body: JSON.stringify({
+              usdc_address: usdcAddress,
+              days_back: daysBack
             }),
           }
         );
@@ -395,15 +396,15 @@ export default function Pools() {
             fees: Number(row.fees) || 0,
           });
         }
-        
+
         // Log metrics summary (single log per fetch)
         console.log(`📊 Metrics (${volumeFeesPeriod === 'all' ? 'All Time' : `${volumeFeesPeriod}d`}): Volume: $${Number(totalVolume).toFixed(2)}, Fees: $${Number(totalFees).toFixed(2)}, Daily data points: ${dailyMetrics.length}`);
-        
+
         setTotalVolume(Number(totalVolume));
         setTotalFees(Number(totalFees));
         setDailyMetricsMap(dailyMap);
         setIsLoadingMetrics(false);
-        } catch (error) {
+      } catch (error) {
         console.error('Error fetching metrics:', error);
         // Set to 0 if fetch fails
         setTotalVolume(0);
@@ -414,12 +415,12 @@ export default function Pools() {
     };
 
     fetchMetricsFast();
-    
+
     // Auto-refresh every 1 hour - metrics don't need real-time updates, reduces egress significantly
     const refreshInterval = setInterval(() => {
       fetchMetricsFast();
     }, 60 * 60 * 1000); // 1 hour in milliseconds
-    
+
     return () => clearInterval(refreshInterval);
   }, [isArcTestnet, supabaseUrl, supabaseKey, volumeFeesPeriod]);
 
@@ -437,7 +438,7 @@ export default function Pools() {
       return sum + (pool.totalLiquidity || 0);
     }, 0);
 
-      setTotalTVL(totalTVL);
+    setTotalTVL(totalTVL);
   }, [pools]);
 
   // Generate TVL history when totalTVL or daily metrics change
@@ -450,49 +451,49 @@ export default function Pools() {
     // Supabase is only used for volume/fees data, not reserves
     // Use current totalTVL state (which comes from RPC) as baseline
     const baselineTVL = totalTVL || 0;
-    
+
     // Start TVL from very low (like Volume/Fees start from ~0) - creates offset below!
     const startingTVL = baselineTVL * 0.05; // Start at 5% - creates that bottom offset!
 
     const history: TVLDataPoint[] = [];
     const now = Date.now();
-    
+
     // Calculate total volume to determine conversion rate
     const totalVolumeOverPeriod = Array.from(dailyMetricsMap.values()).reduce((sum, m) => sum + m.volume, 0);
-    
+
     // Conversion rate: how much TVL grows per unit of volume
     // This ensures we can reach baselineTVL from startingTVL
     const conversionRate = totalVolumeOverPeriod > 0
       ? (baselineTVL - startingTVL) / totalVolumeOverPeriod
       : (baselineTVL - startingTVL) / (baselineTVL * 0.1); // Fallback: assume 10% of TVL as volume
-    
+
     // Build cumulatively - EXACTLY like Volume/Fees
     let cumulativeVolume = 0;
-    
+
     for (let i = 29; i >= 0; i--) {
       const date = new Date(now - i * 24 * 60 * 60 * 1000);
       const dateKey = date.toISOString().split('T')[0];
       const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      
+
       // Get daily volume/fees (same as Volume/Fees charts)
       const dailyMetric = dailyMetricsMap.get(dateKey) || { volume: 0, fees: 0 };
-      
+
       // Accumulate volume (just like Volume chart - starts from 0)
       cumulativeVolume += dailyMetric.volume;
-      
+
       // TVL = starting point + (cumulative volume * conversion rate)
       // This creates the same upward curve as Volume/Fees
       let currentTVL = startingTVL + (cumulativeVolume * conversionRate);
-      
+
       // If no volume data, create smooth progression based on time
       if (totalVolumeOverPeriod === 0) {
         const progress = (30 - i) / 30; // 0 to 1 over 30 days
         currentTVL = startingTVL + (baselineTVL - startingTVL) * Math.pow(progress, 1.3); // Smooth upward curve
       }
-      
+
       // Cap at baseline but allow natural curve formation
       const finalTVL = Math.min(baselineTVL, currentTVL);
-      
+
       history.push({
         date: dateLabel,
         tvl: finalTVL,
@@ -500,22 +501,22 @@ export default function Pools() {
         fees: dailyMetric.fees,
       });
     }
-    
+
     // Final adjustment: scale proportionally to end at baselineTVL (preserves curve shape!)
     if (history.length > 0) {
       const lastTVL = history[history.length - 1].tvl;
       if (lastTVL < baselineTVL && lastTVL > startingTVL) {
         const scaleFactor = (baselineTVL - startingTVL) / (lastTVL - startingTVL);
-        
+
         history.forEach((point) => {
           point.tvl = startingTVL + (point.tvl - startingTVL) * scaleFactor;
         });
       }
-      
+
       // Ensure last point matches exactly
       history[history.length - 1].tvl = baselineTVL;
     }
-    
+
     setTvlHistory(history);
   }, [totalTVL, dailyMetricsMap, isArcTestnet]);
 
@@ -536,29 +537,29 @@ export default function Pools() {
   // Filter pools with TVL >= 10000 (default view) - only USDC pairs
   const filteredPools = useMemo(() => {
     const usdcAddress = TOKENS.USDC.address.toLowerCase();
-    
+
     const filtered = pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
       if (poolTVL < 10000) {
         return false;
       }
-      
+
       // Only show USDC pairs in main view
       const hasUSDC = pool.tokenA.toLowerCase() === usdcAddress || pool.tokenB.toLowerCase() === usdcAddress;
       if (!hasUSDC) {
         return false; // Hide ERC20-to-ERC20 pools from main view
       }
-      
-      const matchesSearch = 
+
+      const matchesSearch =
         pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesSearch;
     });
-    
+
     // Sort by TVL descending (already sorted from Supabase, but maintain order)
     return filtered;
   }, [pools, searchQuery]);
@@ -570,51 +571,51 @@ export default function Pools() {
       if (poolTVL < 10000) {
         return false;
       }
-      
+
       // Only show ERC20-to-ERC20 pools
       if (!isERC20ToERC20Pool(pool)) {
         return false;
       }
-      
-      const matchesSearch = 
+
+      const matchesSearch =
         pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesSearch;
     });
-    
+
     return filtered;
   }, [pools, searchQuery, isERC20ToERC20Pool]);
 
   // Filter pools with TVL < 10000 (low TVL pools - expandable section) - only USDC pairs
   const lowTVLPools = useMemo(() => {
     const usdcAddress = TOKENS.USDC.address.toLowerCase();
-    
+
     const filtered = pools.filter((pool) => {
       const poolTVL = pool.totalLiquidity || 0;
       if (poolTVL >= 10000) {
         return false;
       }
-      
+
       // Only show USDC pairs in low TVL section
       const hasUSDC = pool.tokenA.toLowerCase() === usdcAddress || pool.tokenB.toLowerCase() === usdcAddress;
       if (!hasUSDC) {
         return false; // Hide ERC20-to-ERC20 pools from low TVL section
       }
-      
-      const matchesSearch = 
+
+      const matchesSearch =
         pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesSearch;
     });
-    
+
     return filtered;
   }, [pools, searchQuery]);
 
@@ -625,22 +626,22 @@ export default function Pools() {
       if (poolTVL >= 10000) {
         return false;
       }
-      
+
       // Only show ERC20-to-ERC20 pools
       if (!isERC20ToERC20Pool(pool)) {
         return false;
       }
-      
-      const matchesSearch = 
+
+      const matchesSearch =
         pool.tokenASymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenBSymbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         `${pool.tokenASymbol}/${pool.tokenBSymbol}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenA.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pool.tokenB.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesSearch;
     });
-    
+
     return filtered;
   }, [pools, searchQuery, isERC20ToERC20Pool]);
 
@@ -662,176 +663,175 @@ export default function Pools() {
               <button
                 key={period}
                 onClick={() => setVolumeFeesPeriod(period)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  volumeFeesPeriod === period
-                    ? 'bg-orange-500 text-white shadow-md'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${volumeFeesPeriod === period
+                  ? 'bg-orange-500 text-white shadow-md'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                  }`}
               >
                 {period === 'all' ? 'All Time' : `${period}d`}
               </button>
             ))}
           </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Total TVL Card */}
-          <motion.div
-            className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200 relative overflow-hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              minHeight: '160px',
-              boxShadow: `
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Total TVL Card */}
+            <motion.div
+              className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200 relative overflow-hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                minHeight: '160px',
+                boxShadow: `
                 0 0 20px rgba(251, 146, 60, 0.15),
                 0 0 40px rgba(251, 146, 60, 0.1),
                 0 4px 6px -1px rgba(0, 0, 0, 0.1)
               `
-            }}
-          >
-            <div className="relative z-10">
-              <p className="text-xs text-gray-600 mb-2">Total TVL</p>
-              {isLoadingMetrics ? (
-                <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mb-4" />
-              ) : (
-                <p className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(totalTVL)}</p>
-              )}
-              <div className="h-[60px] w-full">
+              }}
+            >
+              <div className="relative z-10">
+                <p className="text-xs text-gray-600 mb-2">Total TVL</p>
                 {isLoadingMetrics ? (
-                  <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
-                ) : tvlHistory.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={60}>
-                    <AreaChart data={tvlHistory.slice(-7)}>
-                      <defs>
-                        <linearGradient id="tvlGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="rgba(251, 146, 60, 0.1)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <Area 
-                        type="monotone" 
-                        dataKey="tvl" 
-                        stroke="rgba(251, 146, 60, 1)" 
-                        strokeWidth={2}
-                        fill="url(#tvlGradient)"
-                        dot={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : null}
+                  <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mb-4" />
+                ) : (
+                  <p className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(totalTVL)}</p>
+                )}
+                <div className="h-[60px] w-full">
+                  {isLoadingMetrics ? (
+                    <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
+                  ) : tvlHistory.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={60}>
+                      <AreaChart data={tvlHistory.slice(-7)}>
+                        <defs>
+                          <linearGradient id="tvlGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="rgba(251, 146, 60, 0.1)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area
+                          type="monotone"
+                          dataKey="tvl"
+                          stroke="rgba(251, 146, 60, 1)"
+                          strokeWidth={2}
+                          fill="url(#tvlGradient)"
+                          dot={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
 
-          {/* Volume Card */}
-          <motion.div
-            className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200 relative overflow-hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.2, delay: 0.1 }}
-            style={{
-              minHeight: '160px',
-              boxShadow: `
+            {/* Volume Card */}
+            <motion.div
+              className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200 relative overflow-hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2, delay: 0.1 }}
+              style={{
+                minHeight: '160px',
+                boxShadow: `
                 0 0 20px rgba(251, 146, 60, 0.15),
                 0 0 40px rgba(251, 146, 60, 0.1),
                 0 4px 6px -1px rgba(0, 0, 0, 0.1)
               `
-            }}
-          >
-            <div className="relative z-10">
-              <p className="text-xs text-gray-600 mb-2">Volume</p>
-              {isLoadingMetrics ? (
-                <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mb-4" />
-              ) : (
-                <p className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(totalVolume)}</p>
-              )}
-              <div className="h-[60px] w-full">
+              }}
+            >
+              <div className="relative z-10">
+                <p className="text-xs text-gray-600 mb-2">Volume</p>
                 {isLoadingMetrics ? (
-                  <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
-                ) : tvlHistory.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={60}>
-                    <AreaChart data={tvlHistory.slice(-7).map((point, index, arr) => {
-                      // Calculate cumulative volume for upward trend
-                      const cumulativeVolume = arr.slice(0, index + 1).reduce((sum, p) => sum + p.volume, 0);
-                      return { ...point, cumulativeVolume };
-                    })}>
-                      <defs>
-                        <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="rgba(251, 146, 60, 0.1)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <Area 
-                        type="monotone" 
-                        dataKey="cumulativeVolume" 
-                        stroke="rgba(251, 146, 60, 1)" 
-                        strokeWidth={2}
-                        fill="url(#volumeGradient)"
-                        dot={false}
-                        isAnimationActive={false}
-                        connectNulls={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : null}
+                  <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mb-4" />
+                ) : (
+                  <p className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(totalVolume)}</p>
+                )}
+                <div className="h-[60px] w-full">
+                  {isLoadingMetrics ? (
+                    <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
+                  ) : tvlHistory.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={60}>
+                      <AreaChart data={tvlHistory.slice(-7).map((point, index, arr) => {
+                        // Calculate cumulative volume for upward trend
+                        const cumulativeVolume = arr.slice(0, index + 1).reduce((sum, p) => sum + p.volume, 0);
+                        return { ...point, cumulativeVolume };
+                      })}>
+                        <defs>
+                          <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="rgba(251, 146, 60, 0.1)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area
+                          type="monotone"
+                          dataKey="cumulativeVolume"
+                          stroke="rgba(251, 146, 60, 1)"
+                          strokeWidth={2}
+                          fill="url(#volumeGradient)"
+                          dot={false}
+                          isAnimationActive={false}
+                          connectNulls={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
 
-          {/* Fees Card */}
-          <motion.div
-            className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200 relative overflow-hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.2, delay: 0.2 }}
-            style={{
-              minHeight: '160px',
-              boxShadow: `
+            {/* Fees Card */}
+            <motion.div
+              className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200 relative overflow-hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2, delay: 0.2 }}
+              style={{
+                minHeight: '160px',
+                boxShadow: `
                 0 0 20px rgba(251, 146, 60, 0.15),
                 0 0 40px rgba(251, 146, 60, 0.1),
                 0 4px 6px -1px rgba(0, 0, 0, 0.1)
               `
-            }}
-          >
-            <div className="relative z-10">
-              <p className="text-xs text-gray-600 mb-2">Fees</p>
-              {isLoadingMetrics ? (
-                <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mb-4" />
-              ) : (
-                <p className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(totalFees)}</p>
-              )}
-              <div className="h-[60px] w-full">
+              }}
+            >
+              <div className="relative z-10">
+                <p className="text-xs text-gray-600 mb-2">Fees</p>
                 {isLoadingMetrics ? (
-                  <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
-                ) : tvlHistory.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={60}>
-                    <AreaChart data={tvlHistory.slice(-7).map((point, index, arr) => {
-                      // Calculate cumulative fees for upward trend
-                      const cumulativeFees = arr.slice(0, index + 1).reduce((sum, p) => sum + p.fees, 0);
-                      return { ...point, cumulativeFees };
-                    })}>
-                      <defs>
-                        <linearGradient id="feesGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="rgba(251, 146, 60, 0.1)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <Area 
-                        type="monotone" 
-                        dataKey="cumulativeFees" 
-                        stroke="rgba(251, 146, 60, 1)" 
-                        strokeWidth={2}
-                        fill="url(#feesGradient)"
-                        dot={false}
-                        isAnimationActive={false}
-                        connectNulls={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : null}
+                  <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mb-4" />
+                ) : (
+                  <p className="text-3xl font-bold text-gray-900 mb-4">{formatCurrency(totalFees)}</p>
+                )}
+                <div className="h-[60px] w-full">
+                  {isLoadingMetrics ? (
+                    <div className="h-full w-full bg-gray-200 rounded animate-pulse" />
+                  ) : tvlHistory.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={60}>
+                      <AreaChart data={tvlHistory.slice(-7).map((point, index, arr) => {
+                        // Calculate cumulative fees for upward trend
+                        const cumulativeFees = arr.slice(0, index + 1).reduce((sum, p) => sum + p.fees, 0);
+                        return { ...point, cumulativeFees };
+                      })}>
+                        <defs>
+                          <linearGradient id="feesGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="rgba(251, 146, 60, 0.8)" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="rgba(251, 146, 60, 0.1)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <Area
+                          type="monotone"
+                          dataKey="cumulativeFees"
+                          stroke="rgba(251, 146, 60, 1)"
+                          strokeWidth={2}
+                          fill="url(#feesGradient)"
+                          dot={false}
+                          isAnimationActive={false}
+                          connectNulls={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
 
           </div>
         </div>
@@ -871,27 +871,47 @@ export default function Pools() {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className={`px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
-                isRefreshing
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${isRefreshing
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Refresh</span>
             </button>
             <button
               onClick={() => setFilterOption(filterOption === 'all' ? 'my-pools' : 'all')}
-              className={`px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium transition-all ${
-                filterOption === 'my-pools'
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium transition-all ${filterOption === 'my-pools'
+                ? 'bg-orange-500 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               <Filter className="w-4 h-4 inline mr-1 md:mr-2" />
               <span className="hidden sm:inline">{filterOption === 'all' ? 'All Pools' : 'My Pools'}</span>
               <span className="sm:hidden">{filterOption === 'all' ? 'All' : 'My'}</span>
             </button>
+            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'list'
+                  ? 'bg-orange-500 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                aria-label="List view"
+              >
+                <LayoutList className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-lg transition-all ${viewMode === 'grid'
+                  ? 'bg-orange-500 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                aria-label="Grid view"
+              >
+                <Grid className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -921,20 +941,20 @@ export default function Pools() {
         </div>
 
         {/* Pools List */}
-        <div className="space-y-3 relative z-10">
+        <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10' : 'space-y-3 relative z-10'}>
           {isLoading ? (
             // Loading skeletons
             Array.from({ length: poolCountNum || 3 }).map((_, i) => (
               <PoolSkeleton key={i} />
             ))
           ) : poolCountNum === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12 col-span-full">
               <Layers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-500">No pools created yet</p>
               <p className="text-sm text-gray-400 mt-2">Create a pool using the "Create Pool" tab</p>
             </div>
           ) : filteredPools.length === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12 col-span-full">
               <Layers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-500">No pools found matching your search</p>
             </div>
@@ -944,6 +964,7 @@ export default function Pools() {
                 key={pool.poolAddress}
                 pool={pool}
                 filterOption={filterOption}
+                viewMode={viewMode}
                 onAddClick={(poolData) => {
                   setSelectedPool(poolData);
                   setShowAddModal(true);
@@ -996,13 +1017,14 @@ export default function Pools() {
                   transition={{ duration: 0.3 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-4 space-y-3">
+                  <div className={viewMode === 'grid' ? 'mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'mt-4 space-y-3'}>
                     {/* High TVL ERC20 pools */}
                     {erc20ToERC20Pools.map((pool) => (
                       <PoolCard
                         key={pool.poolAddress}
                         pool={pool}
                         filterOption={filterOption}
+                        viewMode={viewMode}
                         onAddClick={(poolData) => {
                           setSelectedPool(poolData);
                           setShowAddModal(true);
@@ -1019,6 +1041,7 @@ export default function Pools() {
                         key={pool.poolAddress}
                         pool={pool}
                         filterOption={filterOption}
+                        viewMode={viewMode}
                         onAddClick={(poolData) => {
                           setSelectedPool(poolData);
                           setShowAddModal(true);
@@ -1075,12 +1098,13 @@ export default function Pools() {
                   transition={{ duration: 0.3 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-4 space-y-3">
+                  <div className={viewMode === 'grid' ? 'mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' : 'mt-4 space-y-3'}>
                     {lowTVLPools.map((pool) => (
                       <PoolCard
                         key={pool.poolAddress}
                         pool={pool}
                         filterOption={filterOption}
+                        viewMode={viewMode}
                         onAddClick={(poolData) => {
                           setSelectedPool(poolData);
                           setShowAddModal(true);
@@ -1154,11 +1178,13 @@ export default function Pools() {
 function PoolCard({
   pool,
   filterOption,
+  viewMode = 'list',
   onAddClick,
   onRemoveClick,
 }: {
   pool: PoolInfo;
   filterOption?: 'all' | 'my-pools';
+  viewMode?: 'list' | 'grid';
   onAddClick: (poolData: {
     poolAddress: Address;
     tokenA: Address;
@@ -1184,7 +1210,7 @@ function PoolCard({
   const reserveBStr = pool.reserveB && pool.reserveBDecimals
     ? formatUnits(BigInt(pool.reserveB), pool.reserveBDecimals)
     : '0';
-  
+
   // Use TVL from Supabase (indexer already calculated it)
   const poolTVL = pool.totalLiquidity || null;
 
@@ -1195,7 +1221,7 @@ function PoolCard({
     abi: POOL_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
-    query: { 
+    query: {
       enabled: !!pool.poolAddress && !!address && isConnected,
       refetchOnWindowFocus: false, // Disable auto-refetch on focus to reduce RPC calls
       staleTime: 30000, // Consider data fresh for 30 seconds
@@ -1207,7 +1233,7 @@ function PoolCard({
     address: pool.poolAddress,
     abi: POOL_ABI,
     functionName: 'totalSupply',
-    query: { 
+    query: {
       enabled: !!pool.poolAddress,
       refetchOnWindowFocus: false, // Disable auto-refetch on focus to reduce RPC calls
       staleTime: 60000, // Consider data fresh for 60 seconds (totalSupply changes less frequently)
@@ -1226,14 +1252,14 @@ function PoolCard({
 
   // Use TVL if calculated, otherwise fallback to sum of reserves
   const totalLiquidity = poolTVL !== null ? poolTVL.toFixed(2) : (parseFloat(reserveAStr) + parseFloat(reserveBStr)).toFixed(2);
-  
+
   // Calculate user's position value in USD (use TVL if available, otherwise use sum of reserves)
   const userPositionValue = totalSupply && parseFloat(totalSupplyStr) > 0 && hasPosition
     ? poolTVL !== null
       ? ((parseFloat(lpBalanceStr) / parseFloat(totalSupplyStr)) * poolTVL).toFixed(2)
       : ((parseFloat(lpBalanceStr) / parseFloat(totalSupplyStr)) * parseFloat(totalLiquidity)).toFixed(2)
     : '0';
-  
+
   // Format numbers
   const formatNumber = (num: string) => {
     const n = parseFloat(num);
@@ -1242,6 +1268,167 @@ function PoolCard({
     return n.toFixed(2);
   };
 
+  // Grid view layout - vertical card
+  if (viewMode === 'grid') {
+    return (
+      <motion.div
+        className="bg-white rounded-2xl p-4 border border-gray-200 hover:border-orange-300 transition-all cursor-pointer group"
+        whileHover={{ scale: 1.02, y: -2 }}
+        whileTap={{ scale: 0.98 }}
+        style={{
+          boxShadow: `
+            0 0 15px rgba(251, 146, 60, 0.1),
+            0 0 30px rgba(251, 146, 60, 0.05),
+            0 4px 12px rgba(0, 0, 0, 0.08),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9)
+          `
+        }}
+      >
+        {/* Pool Header */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex -space-x-3 flex-shrink-0">
+              <div className="relative border-2 border-white shadow-lg rounded-full z-10">
+                <TokenLogo token={pool.tokenASymbol} size={28} className="flex-shrink-0" />
+              </div>
+              <div className="relative border-2 border-white shadow-lg rounded-full z-0">
+                <TokenLogo token={pool.tokenBSymbol} size={28} className="flex-shrink-0" />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-gray-900 truncate">
+                {pool.tokenASymbol} / {pool.tokenBSymbol}
+              </h3>
+              <p className="text-xs text-gray-500">Fee: 0.3%</p>
+            </div>
+          </div>
+          <a
+            href={`${DEX_CONFIG.EXPLORER_URL}/address/${pool.poolAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="p-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all flex items-center justify-center flex-shrink-0"
+            aria-label="View on explorer"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+
+        {hasPosition && (
+          <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium mb-3 inline-block">
+            You have LP
+          </span>
+        )}
+
+        {/* Stats - Compact Layout */}
+        <div className="space-y-2 mb-3">
+          {/* Reserves */}
+          <div className="bg-gray-50 rounded-lg p-2">
+            <p className="text-xs text-gray-500 mb-0.5">Reserves</p>
+            <p className="text-xs font-bold text-gray-900">
+              {formatNumber(reserveAStr)} {pool.tokenASymbol.slice(0, 6)}
+            </p>
+            <p className="text-xs text-gray-600">
+              {formatNumber(reserveBStr)} {pool.tokenBSymbol.slice(0, 6)}
+            </p>
+          </div>
+
+          {/* TVL and Fees in one row */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-gray-50 rounded-lg p-2">
+              <p className="text-xs text-gray-500 mb-0.5">TVL</p>
+              <p className="text-xs font-bold text-gray-900">
+                {poolTVL !== null ? `$${formatNumber(totalLiquidity)}` : formatNumber(totalLiquidity)}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-2">
+              <p className="text-xs text-gray-500 mb-0.5">Fees</p>
+              <p className="text-xs font-bold text-green-600">
+                ${formatNumber((pool.totalFees || 0).toString())}
+              </p>
+            </div>
+          </div>
+
+          {/* Your Position */}
+          {hasPosition && (
+            <div className="bg-orange-50 rounded-lg p-2">
+              <p className="text-xs text-gray-500 mb-0.5">Your Position</p>
+              <p className="text-xs font-bold text-orange-600">
+                {poolTVL !== null ? `$${formatNumber(userPositionValue)}` : formatNumber(userPositionValue)}
+              </p>
+              <p className="text-xs text-gray-500">
+                {parseFloat(lpBalanceStr).toFixed(4)} LP
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          {hasPosition ? (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddClick({
+                    poolAddress: pool.poolAddress,
+                    tokenA: pool.tokenA,
+                    tokenB: pool.tokenB,
+                    tokenASymbol: pool.tokenASymbol,
+                    tokenBSymbol: pool.tokenBSymbol,
+                  });
+                }}
+                className="flex-1 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg text-xs font-medium transition-all"
+                style={{
+                  boxShadow: `
+                    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                    0 4px 12px rgba(251, 146, 60, 0.4),
+                    0 2px 4px rgba(0, 0, 0, 0.1)
+                  `,
+                }}
+              >
+                Add
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveClick({
+                    poolAddress: pool.poolAddress,
+                    tokenA: pool.tokenA,
+                    tokenB: pool.tokenB,
+                    tokenASymbol: pool.tokenASymbol,
+                    tokenBSymbol: pool.tokenBSymbol,
+                  });
+                }}
+                className="flex-1 px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 hover:shadow-lg transition-all"
+              >
+                Remove
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddClick({
+                  poolAddress: pool.poolAddress,
+                  tokenA: pool.tokenA,
+                  tokenB: pool.tokenB,
+                  tokenASymbol: pool.tokenASymbol,
+                  tokenBSymbol: pool.tokenBSymbol,
+                });
+              }}
+              className="w-full px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 hover:shadow-lg transition-all"
+            >
+              Add Liquidity
+            </button>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // List view layout - horizontal card (original)
   return (
     <motion.div
       className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-200 hover:border-orange-300 transition-all cursor-pointer group"

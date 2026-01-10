@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowRight, Loader2, CheckCircle2, AlertCircle, ExternalLink, ChevronDown, Clock, ArrowLeftRight } from 'lucide-react';
+import { X, ArrowRight, Loader2, CheckCircle2, AlertCircle, ExternalLink, ChevronDown, Clock, ArrowLeftRight, ArrowDown, ArrowDownUp } from 'lucide-react';
 import { useAccount, useReadContract, usePublicClient } from 'wagmi';
 import { createPublicClient, http, formatUnits, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
@@ -12,19 +12,18 @@ import { ARC_RPC_URLS } from '../config/wagmi';
 interface BridgeModalProps {
   isOpen?: boolean;
   onClose?: () => void;
-  asPage?: boolean; // When true, renders as page content instead of modal
+  asPage?: boolean;
 }
 
 export type BridgeDirection = 'sepolia-to-arc' | 'arc-to-sepolia';
 
-// Bridge maintenance mode - controlled by environment variable VITE_BRIDGE_MAINTENANCE_MODE
 const BRIDGE_MAINTENANCE_MODE = import.meta.env.VITE_BRIDGE_MAINTENANCE_MODE === 'true';
 
 export default function BridgeModal({ isOpen = true, onClose, asPage = false }: BridgeModalProps) {
   const { address, isConnected, chainId } = useAccount();
 
   const [amount, setAmount] = useState('');
-  const selectedToken: BridgeToken = 'USDC'; // Only USDC supported
+  const selectedToken: BridgeToken = 'USDC';
   const [direction, setDirection] = useState<BridgeDirection>('sepolia-to-arc');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [bridgeStartTime, setBridgeStartTime] = useState<number | null>(null);
@@ -41,7 +40,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const publicClient = usePublicClient();
 
-  // Auto-detect direction based on current chain when component mounts (only if not in success state)
   useEffect(() => {
     if (asPage && currentChainId && state.status !== 'success' && !state.direction) {
       if (currentChainId === ARC_CHAIN_ID) {
@@ -58,20 +56,15 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     }
   }, [isOpen, asPage, currentChainId, state.status, state.direction]);
 
-  // Use stored direction from bridge state if available (for success screen), otherwise use current direction
   const activeDirection = state.direction || direction;
-
-  // Determine source chain ID based on active direction
   const sourceChainId = activeDirection === 'sepolia-to-arc' ? SEPOLIA_CHAIN_ID : ARC_CHAIN_ID;
   const destinationChainId = activeDirection === 'sepolia-to-arc' ? ARC_CHAIN_ID : SEPOLIA_CHAIN_ID;
   const sourceChainName = activeDirection === 'sepolia-to-arc' ? 'Sepolia' : 'Arc Testnet';
   const destinationChainName = activeDirection === 'sepolia-to-arc' ? 'Arc Testnet' : 'Sepolia';
 
-  // Get token info for source chain
   const sourceTokenInfo = CHAIN_TOKENS[sourceChainId]?.[selectedToken];
   const destinationTokenInfo = CHAIN_TOKENS[destinationChainId]?.[selectedToken];
 
-  // ERC20 ABI for balanceOf
   const ERC20_ABI = [
     {
       constant: true,
@@ -82,8 +75,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     },
   ] as const;
 
-  // Fetch balance from source chain using useReadContract (RainbowKit approach)
-  // This automatically watches the chain and updates when connected to that chain
   const { data: sourceBalanceRaw, isLoading: isLoadingSourceBalance } = useReadContract({
     address: (sourceTokenInfo?.contractAddress && isConnected && address && currentChainId === sourceChainId) ? sourceTokenInfo.contractAddress as Address : undefined,
     abi: ERC20_ABI,
@@ -91,14 +82,12 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     args: address ? [address] : undefined,
     query: {
       enabled: !!address && isConnected && !!sourceTokenInfo && currentChainId === sourceChainId,
-      // Refresh every 5 seconds
       refetchInterval: 5000,
     },
   });
 
-  // For source chain when not connected to it, use separate publicClient
   const sourcePublicClient = useMemo(() => {
-    if (currentChainId === sourceChainId || !sourceTokenInfo) return null; // Use wagmi when connected
+    if (currentChainId === sourceChainId || !sourceTokenInfo) return null;
 
     if (sourceChainId === SEPOLIA_CHAIN_ID) {
       return createPublicClient({
@@ -136,12 +125,10 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     return null;
   }, [sourceChainId, sourceTokenInfo, currentChainId]);
 
-  // Fetch source balance when not connected to source chain
   const [sourceBalanceManual, setSourceBalanceManual] = useState<string>('0');
   const [isLoadingSourceBalanceManual, setIsLoadingSourceBalanceManual] = useState(false);
 
   useEffect(() => {
-    // Only fetch manually if we're not connected to the source chain
     if (currentChainId === sourceChainId || !sourcePublicClient || !address || !sourceTokenInfo) {
       setSourceBalanceManual('0');
       return;
@@ -176,7 +163,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
 
     fetchSourceBalance();
-    // Refresh every 30 seconds (reduced frequency to avoid rate limits)
     const interval = setInterval(fetchSourceBalance, 30000);
 
     return () => {
@@ -185,8 +171,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
   }, [sourcePublicClient, address, sourceTokenInfo, currentChainId, sourceChainId]);
 
-  // For destination chain, we need to use a separate publicClient since we might not be connected to it
-  // Create a public client for the destination chain
   const destinationPublicClient = useMemo(() => {
     if (!destinationTokenInfo) return null;
 
@@ -226,7 +210,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     return null;
   }, [destinationChainId, destinationTokenInfo]);
 
-  // Fetch destination balance using the separate publicClient
   const [destinationBalance, setDestinationBalance] = useState<string>('0');
   const [isLoadingDestinationBalance, setIsLoadingDestinationBalance] = useState(false);
 
@@ -265,7 +248,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
 
     fetchDestinationBalance();
-    // Refresh every 30 seconds (reduced frequency to avoid rate limits)
     const interval = setInterval(fetchDestinationBalance, 30000);
 
     return () => {
@@ -274,14 +256,11 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
   }, [destinationPublicClient, address, destinationTokenInfo]);
 
-  // Format source balance - use wagmi when connected to source chain, otherwise use manual fetch
   const tokenBalance = useMemo(() => {
     if (currentChainId === sourceChainId) {
-      // Use wagmi result when connected to source chain
       if (!sourceBalanceRaw || !sourceTokenInfo) return '0';
       return formatUnits(sourceBalanceRaw as bigint, sourceTokenInfo.decimals);
     } else {
-      // Use manual fetch result when not connected to source chain
       return sourceBalanceManual;
     }
   }, [currentChainId, sourceChainId, sourceBalanceRaw, sourceTokenInfo, sourceBalanceManual]);
@@ -289,7 +268,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   const isLoadingBalance = currentChainId === sourceChainId ? isLoadingSourceBalance : isLoadingSourceBalanceManual;
   const balanceError = '';
 
-  // Reset state when modal closes
   useEffect(() => {
     if (!isOpen && !asPage) {
       setAmount('');
@@ -297,19 +275,16 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     }
   }, [isOpen, asPage, reset]);
 
-  // Show progress modal when bridging starts
   useEffect(() => {
     if (state.status === 'bridging') {
       setShowProgressModal(true);
     }
   }, [state.status]);
 
-  // Timer effect during bridging - starts when isLoading becomes true
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
     if (state.isLoading) {
-      // Start timer when bridge begins
       if (!bridgeStartTime) {
         setBridgeStartTime(Date.now());
         setElapsedTime(0);
@@ -322,7 +297,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
         }
       }, 1000);
     } else {
-      // Reset timer when bridge completes or errors
       setElapsedTime(0);
       setBridgeStartTime(null);
     }
@@ -332,16 +306,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
   }, [state.isLoading, bridgeStartTime]);
 
-  // Confetti effect - only trigger when mint transaction (step 4) is confirmed
-  // This means the bridge is fully complete, not just when source transaction is done
-  // Only show confetti if transaction is successful (not rejected/cancelled)
   useEffect(() => {
-    // Only trigger confetti when:
-    // 1. State is success (not error)
-    // 2. Current step is 4 (mint completed)
-    // 3. We have a receiveTxHash (mint transaction is confirmed)
-    // 4. We're not in error state
-    // 5. Ensure we're not in a loading state (shouldn't happen but defensive)
     if (
       state.status === 'success' &&
       state.currentStep === 4 &&
@@ -349,7 +314,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
       !state.error &&
       !state.isLoading
     ) {
-      // Trigger confetti animation
       const duration = 3000;
       const animationEnd = Date.now() + duration;
       const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 10000 };
@@ -366,14 +330,12 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
         const particleCount = 50 * (timeLeft / duration);
 
-        // Launch from left side
         confetti({
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
         });
 
-        // Launch from right side
         confetti({
           ...defaults,
           particleCount,
@@ -381,7 +343,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
         });
       }, 250);
 
-      // Cleanup
       return () => clearInterval(interval);
     }
   }, [state.status, state.currentStep, state.receiveTxHash, state.error, state.isLoading]);
@@ -390,7 +351,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     await bridge(selectedToken, amount, direction);
   };
 
-  // Format elapsed time as MM:SS
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -407,19 +367,18 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   if (!isOpen && !asPage) return null;
 
-  // Show maintenance message if bridge is in maintenance mode
   if (BRIDGE_MAINTENANCE_MODE) {
     return (
       <div className={`${asPage ? 'w-full max-w-2xl mx-auto px-4' : ''}`}>
         <motion.div
-          className="bg-white rounded-3xl p-8 md:p-12 border border-orange-200 shadow-xl relative overflow-hidden"
+          className="bg-white/70 backdrop-blur-xl rounded-3xl p-8 md:p-12 border border-white/30 relative overflow-hidden"
           style={{
             boxShadow: `
-              0 0 20px rgba(251, 146, 60, 0.15),
-              0 0 40px rgba(251, 146, 60, 0.1),
-              0 4px 6px -1px rgba(0, 0, 0, 0.1),
-              0 2px 4px -1px rgba(0, 0, 0, 0.06),
-              inset 0 1px 0 rgba(255, 255, 255, 0.9)
+              inset 0 1px 0 rgba(255, 255, 255, 0.9),
+              inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+              0 0 30px rgba(251, 146, 60, 0.15),
+              0 0 60px rgba(251, 146, 60, 0.1),
+              0 10px 30px rgba(0, 0, 0, 0.1)
             `
           }}
           initial={asPage ? { opacity: 0, y: 20 } : { opacity: 0, scale: 0.9, y: 20 }}
@@ -446,49 +405,50 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   const content = (
     <div className={`${asPage ? 'w-full max-w-2xl mx-auto px-4' : ''}`}>
       <motion.div
-        className="bg-white rounded-3xl p-6 md:p-8 border border-orange-200 shadow-xl relative overflow-hidden"
+        className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-white/30 overflow-hidden"
         style={{
           boxShadow: `
-            0 0 20px rgba(251, 146, 60, 0.15),
-            0 0 40px rgba(251, 146, 60, 0.1),
-            0 4px 6px -1px rgba(0, 0, 0, 0.1),
-            0 2px 4px -1px rgba(0, 0, 0, 0.06),
-            inset 0 1px 0 rgba(255, 255, 255, 0.9)
+            inset 0 1px 0 rgba(255, 255, 255, 0.9),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+            0 0 30px rgba(251, 146, 60, 0.15),
+            0 0 60px rgba(251, 146, 60, 0.1),
+            0 10px 30px rgba(0, 0, 0, 0.1),
+            0 4px 8px rgba(0, 0, 0, 0.05)
           `
         }}
         initial={asPage ? { opacity: 0, y: 20 } : { opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
+        {/* Close Button */}
+        {!asPage && (
+          <motion.button
+            onClick={handleClose}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <X className="w-5 h-5" />
+          </motion.button>
+        )}
+
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3 relative z-10">
-          <div className="flex-1">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Bridge Tokens</h2>
-            <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium mr-2">Cross-Chain</span>
-              <span className="hidden sm:inline">Transfer USDC between Sepolia and Arc Testnet</span>
-              <span className="sm:hidden">Sepolia ↔ Arc Testnet</span>
-            </p>
-          </div>
-          {!asPage && (
-            <motion.button
-              onClick={handleClose}
-              className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center transition-all duration-300 shadow-sm"
-              whileHover={{ scale: 1.05, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <X className="w-5 h-5 text-gray-600" />
-            </motion.button>
-          )}
-        </div>
+        <motion.h3
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6"
+        >
+          Bridge Tokens
+        </motion.h3>
 
         {/* Content */}
         <div className="relative z-10">
           {(state.status === 'idle' || (state.status === 'bridging' && !showProgressModal)) && (
-            <div className="space-y-6">
-              {/* Bridge in Progress Indicator (when modal is closed) */}
+            <div className="space-y-4">
+              {/* Bridge in Progress Indicator */}
               {state.status === 'bridging' && !showProgressModal && (
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
+                <div className="bg-orange-50/80 backdrop-blur-sm border border-orange-200 rounded-xl p-4 flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <Loader2 className="w-5 h-5 text-orange-600 animate-spin" />
                     <div>
@@ -505,195 +465,172 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 </div>
               )}
 
-              {/* Chain Display with Swap Button */}
-              <div className="bg-gray-50 rounded-xl p-3 sm:p-4 border border-gray-200">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
-                  <div className="text-center flex-1 w-full sm:w-auto">
-                    <p className="text-xs text-gray-600 mb-1">From</p>
-                    <div className="flex items-center justify-center space-x-2 mb-1">
-                      <img
-                        src={sourceChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
-                        alt={sourceChainName}
-                        className="w-5 h-5 sm:w-6 sm:h-6"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                      <p className="font-bold text-gray-900 text-sm sm:text-base">{sourceChainName}</p>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 hidden sm:block">Chain ID: {sourceChainId}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDirection(direction === 'sepolia-to-arc' ? 'arc-to-sepolia' : 'sepolia-to-arc');
-                    }}
-                    disabled={state.isLoading}
-                    className="p-2 sm:mx-4 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 hover:border-orange-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed rotate-90 sm:rotate-0"
-                    title="Swap chains"
-                  >
-                    <ArrowLeftRight className="w-5 h-5 text-gray-600" />
-                  </button>
-                  <div className="text-center flex-1 w-full sm:w-auto">
-                    <p className="text-xs text-gray-600 mb-1">To</p>
-                    <div className="flex items-center justify-center space-x-2 mb-1">
-                      <img
-                        src={destinationChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
-                        alt={destinationChainName}
-                        className="w-5 h-5 sm:w-6 sm:h-6"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                      <p className="font-bold text-gray-900 text-sm sm:text-base">{destinationChainName}</p>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 hidden sm:block">Chain ID: {destinationChainId}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Token Display */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Token
-                </label>
-                <div className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-gray-50 flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
+              {/* Source Chain */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                style={{
+                  boxShadow: `
+                    inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                    inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <p className="text-xs text-gray-500 mb-2">From</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <img
-                      src="/usdc.svg"
-                      alt="USDC"
-                      className="w-6 h-6"
+                      src={sourceChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
+                      alt={sourceChainName}
+                      className="w-8 h-8"
                       onError={(e) => {
-                        // Hide icon if it fails to load
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
                     />
                     <div>
-                      <span className="font-medium text-gray-900">USDC</span>
-                      <span className="text-xs text-gray-500 ml-2">(USD Coin)</span>
+                      <p className="font-bold text-gray-900">{sourceChainName}</p>
+                      <p className="text-xs text-gray-500">Chain ID: {sourceChainId}</p>
                     </div>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Bridge Kit supports USDC for bidirectional bridging between Sepolia and Arc Testnet
-                </p>
-              </div>
+              </motion.div>
 
-              {/* Token Balance Display */}
-              {isConnected && address && (
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 sm:p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
-                    <div className="flex items-center space-x-2">
-                      <img
-                        src="/usdc.svg"
-                        alt="USDC"
-                        className="w-5 h-5"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                      <div>
-                        <p className="text-xs text-orange-700 font-medium mb-1">{sourceChainName} {selectedToken} Balance</p>
-                        {isLoadingBalance ? (
-                          <div className="flex items-center space-x-2">
-                            <Loader2 className="w-4 h-4 text-orange-600 animate-spin" />
-                            <span className="text-sm text-orange-800">Loading...</span>
-                          </div>
-                        ) : (
-                          <p className="text-lg font-bold text-orange-900">
-                            {parseFloat(tokenBalance) > 0
-                              ? `${parseFloat(tokenBalance).toFixed(2)} ${selectedToken}`
-                              : `0.00 ${selectedToken}`
-                            }
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      {CHAIN_TOKENS[sourceChainId] && (
-                        <p className="text-xs text-orange-600 font-mono break-all">
-                          {CHAIN_TOKENS[sourceChainId][selectedToken].contractAddress.slice(0, 6)}...{CHAIN_TOKENS[sourceChainId][selectedToken].contractAddress.slice(-4)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {balanceError && (
-                    <div className="mt-2 pt-2 border-t border-orange-200">
-                      <p className="text-xs text-amber-600">
-                        ⚠️ {balanceError}
-                      </p>
-                    </div>
-                  )}
-                  {parseFloat(tokenBalance) === 0 && !isLoadingBalance && !balanceError && (
-                    <div className="mt-3 pt-3 border-t border-orange-200">
-                      <p className="text-xs text-orange-700 mb-2">
-                        ⚠️ You need {selectedToken} at the Bridge Kit contract address to bridge
-                      </p>
-                      <a
-                        href="https://faucet.circle.com/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 font-medium underline"
-                      >
-                        <span>Get {selectedToken} on Sepolia here</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Amount Input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Amount ({selectedToken})
-                </label>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  className="w-full px-3 sm:px-4 py-2 sm:py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all text-base sm:text-lg"
+              {/* Bridge Arrow with Swap Button */}
+              <div className="flex items-center justify-center -my-2 relative z-10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDirection(direction === 'sepolia-to-arc' ? 'arc-to-sepolia' : 'sepolia-to-arc');
+                  }}
                   disabled={state.isLoading}
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  Enter the amount to bridge to {destinationChainName}
-                </p>
+                  className="p-3 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    boxShadow: `
+                      inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                      inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                      0 0 20px rgba(251, 146, 60, 0.3),
+                      0 4px 12px rgba(251, 146, 60, 0.4)
+                    `,
+                  }}
+                  title="Swap chains"
+                >
+                  <ArrowDownUp className="w-5 h-5 text-white" />
+                </button>
               </div>
 
-              {/* Warning if not on source chain */}
+              {/* Destination Chain */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                style={{
+                  boxShadow: `
+                    inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                    inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <p className="text-xs text-gray-500 mb-2">To</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={destinationChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
+                      alt={destinationChainName}
+                      className="w-8 h-8"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                    <div>
+                      <p className="font-bold text-gray-900">{destinationChainName}</p>
+                      <p className="text-xs text-gray-500">Chain ID: {destinationChainId}</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Token & Amount */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                style={{
+                  boxShadow: `
+                    inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                    inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                    0 4px 8px rgba(0, 0, 0, 0.05)
+                  `,
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-gray-700">Amount</label>
+                  {isConnected && address && (
+                    <span className="text-xs text-gray-500">
+                      Balance: {isLoadingBalance ? '...' : parseFloat(tokenBalance).toFixed(2)} USDC
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <img src="/usdc.svg" alt="USDC" className="w-8 h-8" onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }} />
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    className="flex-1 text-2xl font-bold bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
+                    disabled={state.isLoading}
+                  />
+                </div>
+              </motion.div>
+
+              {/* Warnings */}
               {isConnected && chainId !== sourceChainId && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-yellow-50/80 backdrop-blur-sm border border-yellow-200 rounded-xl p-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                     <div className="text-sm text-yellow-800">
                       <p className="font-medium">Auto-switch to {sourceChainName}</p>
                       <p className="text-xs mt-1">
-                        Bridge Kit will automatically switch your network to {sourceChainName} when you start the bridge process.
+                        Bridge Kit will automatically switch your network to {sourceChainName}.
                       </p>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               )}
 
-              {/* Connect Wallet Prompt */}
               {!isConnected && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-blue-50/80 backdrop-blur-sm border border-blue-200 rounded-xl p-4 text-center"
+                >
                   <p className="text-sm text-blue-800">
                     Please connect your wallet to bridge tokens
                   </p>
-                </div>
+                </motion.div>
               )}
 
               {/* Bridge Button */}
-              <button
+              <motion.button
                 onClick={handleBridge}
                 disabled={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading}
-                className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 ${!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading
+                className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white active:scale-95'
+                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
                   }`}
                 style={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : {
                   boxShadow: `
@@ -703,15 +640,17 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                     0 2px 4px rgba(0, 0, 0, 0.1)
                   `,
                 }}
+                whileHover={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : { scale: 1.02 }}
+                whileTap={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : { scale: 0.98 }}
               >
                 {state.isLoading ? 'Processing...' : `Bridge ${selectedToken}`}
-              </button>
+              </motion.button>
             </div>
           )}
 
-          {/* Success - Only show if mint step (4) is completed and we have receiveTxHash */}
+          {/* Success */}
           {state.status === 'success' && state.currentStep === 4 && state.receiveTxHash && (
-            <div className="space-y-4 text-center relative z-10">
+            <div className="space-y-4 text-center">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-10 h-10 text-orange-600" />
               </div>
@@ -721,7 +660,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   Your {selectedToken} has been successfully transferred from {sourceChainName} to {destinationChainName}.
                 </p>
 
-                {/* Transaction Links */}
                 <div className="space-y-2 mb-4">
                   {state.sourceTxHash && (
                     <a
@@ -732,13 +670,13 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                       }
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
+                      className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm"
                     >
                       <span>View {sourceChainName} Transaction</span>
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   )}
-                  {state.receiveTxHash ? (
+                  {state.receiveTxHash && (
                     <a
                       href={
                         destinationChainId === SEPOLIA_CHAIN_ID
@@ -749,42 +687,17 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                       rel="noopener noreferrer"
                       className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
                     >
-                      <span>View Receive Message Transaction</span>
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  ) : (
-                    <div className="text-xs text-gray-500 pt-2">
-                      <p>Receive message transaction hash will be available after confirmation.</p>
-                      <p className="mt-1">Check the browser console for details or {destinationChainName} explorer later.</p>
-                    </div>
-                  )}
-                  {!state.sourceTxHash && !state.receiveTxHash && state.result && (state.result as any)?.txHash && (
-                    <a
-                      href={
-                        sourceChainId === SEPOLIA_CHAIN_ID
-                          ? `https://sepolia.etherscan.io/tx/${(state.result as any).txHash}`
-                          : `https://testnet.arcscan.app/tx/${(state.result as any).txHash}`
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
-                    >
-                      <span>View Transaction</span>
+                      <span>View Receive Transaction</span>
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   )}
                 </div>
               </div>
               <motion.button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleClose();
-                }}
-                className="mt-4 w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3 bg-orange-500 text-white rounded-xl font-semibold text-base sm:text-lg hover:bg-orange-600 active:bg-orange-700 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed relative z-50"
+                onClick={handleClose}
+                className="mt-4 w-full px-8 py-3 bg-orange-500 text-white rounded-xl font-semibold text-lg hover:bg-orange-600 transition-all"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                type="button"
               >
                 Close
               </motion.button>
@@ -802,23 +715,12 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 <div className="text-sm text-red-600 mb-4 max-h-40 overflow-y-auto text-left bg-red-50 p-3 rounded-lg">
                   <p className="whitespace-pre-wrap break-words">{state.error}</p>
                 </div>
-                <p className="text-xs text-gray-500 mb-4">
-                  Check the browser console for detailed {selectedToken} contract address information.
-                </p>
                 <motion.button
                   onClick={() => {
                     reset();
                     setAmount('');
                   }}
-                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-semibold text-base sm:text-lg transition-all duration-200 cursor-pointer"
-                  style={{
-                    boxShadow: `
-                      inset 0 2px 4px rgba(255, 255, 255, 0.3),
-                      inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                      0 4px 12px rgba(251, 146, 60, 0.4),
-                      0 2px 4px rgba(0, 0, 0, 0.1)
-                    `,
-                  }}
+                  className="w-full px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-semibold text-lg transition-all"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
@@ -830,7 +732,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
         </div>
       </motion.div>
 
-      {/* Bridge Progress Modal */}
+      {/* Progress Modal */}
       <AnimatePresence>
         {state.status === 'bridging' && showProgressModal && (
           <motion.div
@@ -838,9 +740,6 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => {
-              // Don't close during active bridging
-            }}
           >
             <motion.div
               initial={{ scale: 0.8, opacity: 0, y: 20 }}
@@ -851,348 +750,111 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
               className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-6 sm:p-8 max-w-md w-full border border-white/30 overflow-hidden"
               style={{
                 boxShadow: `
-            inset 0 1px 0 rgba(255, 255, 255, 0.9),
-            inset 0 -1px 0 rgba(0, 0, 0, 0.05),
-            0 0 30px rgba(251, 146, 60, 0.15),
-            0 0 60px rgba(251, 146, 60, 0.1),
-            0 10px 30px rgba(0, 0, 0, 0.1),
-            0 4px 8px rgba(0, 0, 0, 0.05)
-          `,
+                  inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                  inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+                  0 0 30px rgba(251, 146, 60, 0.15),
+                  0 0 60px rgba(251, 146, 60, 0.1),
+                  0 10px 30px rgba(0, 0, 0, 0.1)
+                `,
               }}
             >
-              {/* Close Button */}
               <button
-                onClick={() => {
-                  setShowProgressModal(false);
-                }}
-                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
-                aria-label="Close"
+                onClick={() => setShowProgressModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              {/* Header */}
-              <motion.h3
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-xl sm:text-2xl font-bold text-gray-900 text-center mb-6"
-              >
+              <h3 className="text-2xl font-bold text-gray-900 text-center mb-6">
                 Bridge Progress
-              </motion.h3>
+              </h3>
 
               <div className="space-y-4">
-                {/* Step 1: Approve USDC */}
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
-                  style={{
-                    boxShadow: `
-                      inset 2px 2px 4px rgba(255, 255, 255, 0.8),
-                      inset -2px -2px 4px rgba(0, 0, 0, 0.1),
-                      0 4px 8px rgba(0, 0, 0, 0.05)
-                    `,
-                  }}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="relative flex-shrink-0">
-                      {state.currentStep >= 1 ? (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 200 }}
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                              0 0 20px rgba(251, 146, 60, 0.4),
-                              0 4px 12px rgba(251, 146, 60, 0.3)
-                            `,
-                          }}
-                        >
-                          <CheckCircle2 className="w-6 h-6 text-white" />
-                        </motion.div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.9),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.1)
-                            `,
-                          }}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-white" />
-                        </div>
-                      )}
+                {[
+                  { step: 1, title: 'Approve USDC', desc: 'Allow contract to spend tokens' },
+                  { step: 2, title: 'Burn on source', desc: 'Burn tokens on source chain' },
+                  { step: 3, title: 'Attestation', desc: 'Fetch attestation from Circle API' },
+                  { step: 4, title: `Mint on ${destinationChainName}`, desc: 'Mint tokens on destination' },
+                ].map((item, idx) => (
+                  <motion.div
+                    key={item.step}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 * idx }}
+                    className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
+                    style={{
+                      boxShadow: `
+                        inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+                        inset -2px -2px 4px rgba(0, 0, 0, 0.1),
+                        0 4px 8px rgba(0, 0, 0, 0.05)
+                      `,
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="relative flex-shrink-0">
+                        {state.currentStep >= item.step ? (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 0 20px rgba(251, 146, 60, 0.4)
+                              `,
+                            }}
+                          >
+                            <CheckCircle2 className="w-6 h-6 text-white" />
+                          </motion.div>
+                        ) : state.currentStep === item.step - 1 ? (
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.5),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.2),
+                                0 4px 12px rgba(251, 146, 60, 0.4)
+                              `,
+                            }}
+                          >
+                            <Loader2 className="w-6 h-6 text-white animate-spin" />
+                          </div>
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
+                            style={{
+                              boxShadow: `
+                                inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                                inset 0 -2px 4px rgba(0, 0, 0, 0.1)
+                              `,
+                            }}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-white" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`font-semibold text-sm ${state.currentStep >= item.step ? 'text-orange-600' : state.currentStep === item.step - 1 ? 'text-orange-600' : 'text-gray-500'}`}>
+                          {item.title}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {state.currentStep >= item.step ? 'Completed' : state.currentStep === item.step - 1 ? 'Processing...' : item.desc}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${state.currentStep >= 1 ? 'text-orange-600' : 'text-gray-500'
-                        }`}>
-                        Approve USDC
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {state.currentStep >= 1 ? 'Approval completed' : 'Allow the contract to spend your tokens'}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
+                  </motion.div>
+                ))}
 
-                {/* Step 2: Burn on source */}
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
-                  style={{
-                    boxShadow: `
-                          inset 2px 2px 4px rgba(255, 255, 255, 0.8),
-                          inset -2px -2px 4px rgba(0, 0, 0, 0.1),
-                          0 4px 8px rgba(0, 0, 0, 0.05)
-                        `,
-                  }}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="relative flex-shrink-0">
-                      {state.currentStep >= 2 ? (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 200 }}
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                              0 0 20px rgba(251, 146, 60, 0.4),
-                              0 4px 12px rgba(251, 146, 60, 0.3)
-                            `,
-                          }}
-                        >
-                          <CheckCircle2 className="w-6 h-6 text-white" />
-                        </motion.div>
-                      ) : state.currentStep === 1 ? (
-                        <motion.div
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                                  0 4px 12px rgba(251, 146, 60, 0.4)
-                                `,
-                          }}
-                        >
-                          <Loader2 className="w-6 h-6 text-white animate-spin" />
-                        </motion.div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.9),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.1)
-                            `,
-                          }}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${state.currentStep >= 2
-                        ? 'text-orange-600'
-                        : state.currentStep === 1
-                          ? 'text-orange-600'
-                          : 'text-gray-500'
-                        }`}>
-                        Burn on source
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {state.currentStep >= 2
-                          ? 'Burn completed'
-                          : state.currentStep === 1
-                            ? 'Processing...'
-                            : 'Pending...'}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Step 3: Attestation */}
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
-                  style={{
-                    boxShadow: `
-                      inset 2px 2px 4px rgba(255, 255, 255, 0.8),
-                      inset -2px -2px 4px rgba(0, 0, 0, 0.1),
-                      0 4px 8px rgba(0, 0, 0, 0.05)
-                    `,
-                  }}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="relative flex-shrink-0">
-                      {state.currentStep >= 3 ? (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 200 }}
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                                  inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                                  inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                              0 0 20px rgba(251, 146, 60, 0.4),
-                              0 4px 12px rgba(251, 146, 60, 0.3)
-                                `,
-                          }}
-                        >
-                          <CheckCircle2 className="w-6 h-6 text-white" />
-                        </motion.div>
-                      ) : state.currentStep === 2 ? (
-                        <motion.div
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                              0 4px 12px rgba(59, 130, 246, 0.4)
-                            `,
-                          }}
-                        >
-                          <Loader2 className="w-6 h-6 text-white animate-spin" />
-                        </motion.div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
-                          style={{
-                            boxShadow: `
-                                  inset 0 2px 4px rgba(255, 255, 255, 0.9),
-                                  inset 0 -2px 4px rgba(0, 0, 0, 0.1)
-                                `,
-                          }}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${state.currentStep >= 3
-                        ? 'text-orange-600'
-                        : state.currentStep === 2
-                          ? 'text-blue-600'
-                          : 'text-gray-500'
-                        }`}>
-                        Attestation...
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {state.currentStep >= 3
-                          ? 'Attestation fetched'
-                          : state.currentStep === 2
-                            ? 'Fetching attestation from Circle API...'
-                            : 'Pending...'}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Step 4: Mint on destination chain */}
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="bg-white/60 backdrop-blur-lg rounded-2xl p-4 border border-white/40"
-                  style={{
-                    boxShadow: `
-                      inset 2px 2px 4px rgba(255, 255, 255, 0.8),
-                      inset -2px -2px 4px rgba(0, 0, 0, 0.1),
-                      0 4px 8px rgba(0, 0, 0, 0.05)
-                    `,
-                  }}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="relative flex-shrink-0">
-                      {state.currentStep >= 4 ? (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: 'spring', stiffness: 200 }}
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                              0 0 20px rgba(251, 146, 60, 0.4),
-                              0 4px 12px rgba(251, 146, 60, 0.3)
-                            `,
-                          }}
-                        >
-                          <CheckCircle2 className="w-6 h-6 text-white" />
-                        </motion.div>
-                      ) : state.currentStep === 3 ? (
-                        <motion.div
-                          className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.5),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                              0 4px 12px rgba(251, 146, 60, 0.4)
-                            `,
-                          }}
-                        >
-                          <Loader2 className="w-6 h-6 text-white animate-spin" />
-                        </motion.div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300"
-                          style={{
-                            boxShadow: `
-                              inset 0 2px 4px rgba(255, 255, 255, 0.9),
-                              inset 0 -2px 4px rgba(0, 0, 0, 0.1)
-                            `,
-                          }}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-sm ${state.currentStep >= 4
-                        ? 'text-orange-600'
-                        : state.currentStep === 3
-                          ? 'text-orange-600'
-                          : 'text-gray-500'
-                        }`}>
-                        Mint on {destinationChainName}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {state.currentStep >= 4
-                          ? 'Mint completed'
-                          : state.currentStep === 3
-                            ? 'Processing receive message...'
-                            : 'Pending...'}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Status Bar */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 p-4 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl text-white text-center font-semibold"
+                <div className="mt-4 p-4 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl text-white text-center font-semibold"
                   style={{
                     boxShadow: `
                       inset 0 2px 4px rgba(255, 255, 255, 0.3),
                       inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-                      0 4px 12px rgba(251, 146, 60, 0.4),
-                      0 2px 4px rgba(0, 0, 0, 0.1)
+                      0 4px 12px rgba(251, 146, 60, 0.4)
                     `,
                   }}
                 >
                   Bridging...
-                </motion.div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1207,11 +869,10 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   return (
     <motion.div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
       onClick={handleClose}
     >
       <div onClick={(e) => e.stopPropagation()}>
