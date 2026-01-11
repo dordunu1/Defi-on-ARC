@@ -1,19 +1,20 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeftRight, RefreshCw, Droplets, Layers, PlusCircle } from 'lucide-react';
+import { ArrowLeftRight, RefreshCw, Droplets, Layers, PlusCircle, Sprout } from 'lucide-react';
 
 interface NavLinkRenderProps {
   isActive: boolean;
   isPending: boolean;
 }
 
-export type TabType = 'bridge' | 'swap' | 'pools' | 'create-pool';
+export type TabType = 'bridge' | 'swap' | 'pools' | 'create-pool' | 'farming';
 
 const tabs: { id: TabType; path: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'bridge', path: '/bridge', label: 'Bridge', icon: ArrowLeftRight },
   { id: 'swap', path: '/swap', label: 'Swap', icon: RefreshCw },
   { id: 'pools', path: '/pools', label: 'Pools', icon: Layers },
   { id: 'create-pool', path: '/create-pool', label: 'Create Pool', icon: PlusCircle },
+  { id: 'farming', path: '/farming', label: 'Farming', icon: Sprout },
 ];
 
 export default function Navigation() {

@@ -269,3 +269,194 @@ export const ROUTER_ABI = [
   },
 ] as const;
 
+export const STAKING_REWARDS_ABI = [
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'address', name: 'lpTokenAddress', type: 'address' },
+      { internalType: 'uint256', name: 'rewardRate', type: 'uint256' },
+    ],
+    name: 'addPool',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'uint256', name: 'newRewardRate', type: 'uint256' },
+    ],
+    name: 'updateRewardRate',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'uint256', name: 'newRewardRate', type: 'uint256' },
+    ],
+    name: 'updateAllPoolsRewardRate',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
+    name: 'stake',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
+    ],
+    name: 'unstake',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'poolAddress', type: 'address' }],
+    name: 'claimRewards',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'claimAllRewards',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'address', name: 'user', type: 'address' },
+    ],
+    name: 'getPendingRewards',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'address', name: 'user', type: 'address' },
+    ],
+    name: 'getUserStaked',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'poolAddress', type: 'address' }],
+    name: 'getTotalStaked',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'poolAddress', type: 'address' }],
+    name: 'getPoolInfo',
+    outputs: [
+      {
+        components: [
+          { internalType: 'address', name: 'lpToken', type: 'address' },
+          { internalType: 'uint256', name: 'rewardRate', type: 'uint256' },
+          { internalType: 'uint256', name: 'lastUpdateTime', type: 'uint256' },
+          { internalType: 'uint256', name: 'rewardPerTokenStored', type: 'uint256' },
+          { internalType: 'uint256', name: 'totalStaked', type: 'uint256' },
+          { internalType: 'bool', name: 'isActive', type: 'bool' },
+        ],
+        internalType: 'struct StakingRewards.PoolInfo',
+        name: '',
+        type: 'tuple',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getAllPools',
+    outputs: [{ internalType: 'address[]', name: '', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'poolCount',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'rewardToken',
+    outputs: [{ internalType: 'contract IERC20', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'claimingEnabled',
+    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { internalType: 'address', name: 'poolAddress', type: 'address' },
+      { internalType: 'address', name: 'user', type: 'address' },
+    ],
+    name: 'getStakerInfo',
+    outputs: [
+      { internalType: 'uint256', name: 'stakedAmount', type: 'uint256' },
+      { internalType: 'uint256', name: 'accumulatedRewards', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'address', name: 'poolAddress', type: 'address' }],
+    name: 'deactivatePool',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'owner',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'paused',
+    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'pause',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'unpause',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+] as const;
+

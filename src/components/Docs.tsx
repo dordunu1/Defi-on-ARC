@@ -13,7 +13,8 @@ import {
   Zap, 
   Settings, 
   MapPin, 
-  BookOpen 
+  BookOpen,
+  Sprout
 } from 'lucide-react';
 import { DEX_CONFIG } from '../config/dex';
 import '../styles/neumorphic.css';
@@ -1590,6 +1591,129 @@ function getAmountsIn(uint256 amountOut, address[] calldata path)
 \`\`\`
 
 Calculates input amounts needed for a path.`
+  },
+  farming: {
+    title: 'LP Farming (Staking)',
+    content: `# LP Farming (Staking)
+
+LP Farming is a reward mechanism that allows liquidity providers to earn additional **DOA** (Defi on Arc) tokens by staking their LP tokens.
+
+## What is LP Farming?
+
+LP Farming, also known as Liquidity Mining, enables users to:
+
+1. **Stake LP Tokens**: Lock your LP tokens in the staking contract
+2. **Earn Rewards**: Accumulate DOA tokens over time based on your staking share
+3. **Track Rewards**: Monitor your accumulated rewards in real-time
+4. **Future Distribution**: Rewards accumulate and will be distributed via airdrop
+
+## How It Works
+
+### The Process
+
+When you provide liquidity to a pool, you receive LP tokens representing your share. By staking these LP tokens in the farming contract, you earn additional DOA rewards on top of the trading fees you already receive from providing liquidity.
+
+### Reward Distribution
+
+Rewards are distributed proportionally based on:
+- **Your Staked Amount**: How many LP tokens you've staked
+- **Total Staked**: Total LP tokens staked by all users in that pool
+- **Reward Rate**: Fixed rate of DOA tokens per second (0.05 DOA/sec for USDC pairs)
+- **Time**: Duration of your staking
+
+### Reward Formula
+
+\`\`\`
+Your Reward = (Your Staked LP / Total Staked LP) × Reward Rate × Time
+\`\`\`
+
+**Example:**
+- Pool has 10,000 LP tokens staked total
+- You stake 1,000 LP tokens (10% of pool)
+- Reward rate: 0.05 DOA per second
+- After 1 day (86,400 seconds):
+- Your reward: (1,000 / 10,000) × 0.05 × 86,400 = **432 DOA**
+
+### APY (Annual Percentage Yield)
+
+The APY represents your annual return from staking. It's calculated by:
+1. Determining annual rewards based on reward rate
+2. Comparing to total value staked
+3. Accounting for compounding effects
+
+Higher reward rates and lower total staked amounts result in higher APY.
+
+## Supported Pools
+
+Currently, all **USDC pairs** are eligible for farming:
+- USDC/SRAC
+- USDC/RACS
+- USDC/SACS
+- USDC/KITTY
+- USDC/DOGG
+- USDC/EURC
+- Any future USDC pairs
+
+Each pool has a reward rate of **0.05 DOA tokens per second**.
+
+## Reward Accumulation
+
+### How Rewards Accumulate
+
+- Rewards accumulate continuously while your LP tokens are staked
+- The longer you stake, the more rewards you earn
+- Your share of rewards is proportional to your share of total staked LP tokens
+
+### Viewing Your Rewards
+
+- Navigate to the **Farming** tab
+- Select your pool pair
+- View your staked amount and accumulated rewards
+- Rewards update in real-time
+
+### Reward Distribution
+
+Rewards are currently **accumulating but not claimable**. They will be distributed via airdrop in the future. This allows for:
+- Complete tracking of all stakers
+- Fair distribution planning
+- Reward verification before distribution
+
+## Benefits of LP Farming
+
+1. **Additional Yield**: Earn DOA tokens on top of trading fees
+2. **Flexible Staking**: Stake and unstake at any time
+3. **Multiple Pools**: Stake in multiple pools simultaneously
+4. **Transparent**: All rewards tracked on-chain and in database
+5. **No Lock Period**: Unstake your LP tokens whenever you want
+
+## Contract Architecture
+
+### StakingRewards Contract
+
+The StakingRewards contract manages all staking operations:
+
+- **Multi-Pool Support**: Handles multiple pools simultaneously
+- **Automatic Rewards**: Calculates and tracks rewards automatically
+- **Secure**: Uses reentrancy guards and access controls
+- **Efficient**: Optimized for gas usage
+
+### Key Functions
+
+**stake()** - Lock your LP tokens to start earning rewards
+**unstake()** - Withdraw your LP tokens (rewards continue accumulating until unstaked)
+**getPendingRewards()** - View your accumulated DOA rewards
+**getPoolInfo()** - Get pool statistics including total staked and reward rate
+
+## Data Tracking
+
+All staking data is tracked both on-chain and in our database:
+
+- **On-Chain**: Immutable record of all staking transactions
+- **Database**: Fast queries for analytics and UI display
+- **Real-Time**: Indexer updates data every 30 minutes
+- **Historical**: Complete history of all staking events
+
+This dual tracking ensures data integrity and fast user experience.`
   }
 };
 
@@ -1602,6 +1726,7 @@ const navItems = [
   { id: 'router', title: 'Router', icon: Route },
   { id: 'liquidity-pools', title: 'Liquidity Pools', icon: BarChart3 },
   { id: 'swap-mechanics', title: 'Swap Mechanics', icon: Zap },
+  { id: 'farming', title: 'LP Farming', icon: Sprout },
   { id: 'technical-details', title: 'Technical Details', icon: Settings },
   { id: 'contract-addresses', title: 'Contract Addresses', icon: MapPin },
   { id: 'api-reference', title: 'API Reference', icon: BookOpen },

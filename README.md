@@ -24,10 +24,19 @@ A full-featured DeFi application built on Arc Testnet featuring token swapping, 
 - **Confetti Animation**: Celebration on successful bridge
 - **Transaction Links**: Direct links to block explorers
 
+### LP Farming (Staking)
+- **Stake LP Tokens**: Stake your LP tokens to earn DOA rewards
+- **Multi-Pool Support**: Farm rewards from multiple pools simultaneously
+- **Real-time Rewards**: Track accumulated DOA rewards in real-time
+- **Future Airdrop**: Rewards accumulate and will be distributed via airdrop
+- **APY Display**: View current APY for each staking pool
+- **USDC Pairs**: All USDC pairs automatically eligible for farming
+
 ### Analytics & Data
 - **Pool Analytics**: TVL, volume, and fees tracking
 - **Price History**: Historical price data for all pairs
 - **Swap History**: Individual account swap history
+- **Staking Stats**: Track staking positions and accumulated rewards
 - **Real-time Updates**: Auto-refresh every 5 minutes
 
 ## 📁 Project Structure
@@ -42,6 +51,7 @@ my-bridge-app/
 │   │   ├── CreatePool.tsx       # Pool creation interface
 │   │   ├── LandingPage.tsx      # Landing page
 │   │   ├── Liquidity.tsx        # Liquidity management
+│   │   ├── Farming.tsx          # LP staking/farming interface
 │   │   ├── Navigation.tsx      # App navigation
 │   │   ├── Pools.tsx            # Pool listings & analytics
 │   │   ├── PriceChart.tsx       # Price chart component
@@ -58,6 +68,7 @@ my-bridge-app/
 │   ├── hooks/                    # Custom React hooks
 │   │   ├── useBridge.ts         # Bridge functionality
 │   │   ├── useDEX.ts            # DEX interactions
+│   │   ├── useStaking.ts        # Staking/farming functionality
 │   │   └── usePriceHistory.ts   # Price history fetching
 │   ├── utils/                    # Utility functions
 │   │   ├── addArcTestnet.ts     # Arc Testnet config
@@ -70,9 +81,12 @@ my-bridge-app/
 │   ├── contracts/               # Solidity source files
 │   │   ├── MockERC20.sol        # Test token contract
 │   │   ├── PoolFactory.sol      # Factory for creating pools
-│   │   └── SimplePoolWithLP.sol # Liquidity pool contract
+│   │   ├── SimplePoolWithLP.sol # Liquidity pool contract
+│   │   └── StakingRewards.sol   # LP staking/farming contract
 │   ├── scripts/                  # Deployment scripts
 │   │   ├── deploy.ts            # Deploy contracts
+│   │   ├── deployStaking.ts     # Deploy staking contracts
+│   │   ├── addUSDCpoolsToStaking.ts # Add USDC pairs to staking
 │   │   ├── addInitialLiquidity.ts
 │   │   └── recoverLiquidity.ts
 │   ├── artifacts/               # Compiled contracts
@@ -95,8 +109,11 @@ my-bridge-app/
 │   └── validate-liquidity.js
 │
 ├── supabase-schema.sql          # Database schema
+├── supabase-staking-schema.sql  # Staking database schema
 ├── supabase-migration-add-sender-address.sql
 ├── INDEXER_SETUP.md             # Indexer setup guide
+├── STAKING_SETUP.md             # Staking/farming setup guide
+├── LP_FARMING_EXPLAINED.md      # LP farming mechanics explained
 ├── SECURITY_ANALYSIS.md         # Security documentation
 ├── package.json                 # Frontend dependencies
 ├── vite.config.ts               # Vite configuration
@@ -385,9 +402,51 @@ npm run build
 4. Add environment variables
 5. Deploy
 
+## 🌾 LP Farming Setup
+
+### Overview
+
+LP Farming allows users to stake their LP tokens to earn DOA (reward token) rewards. Rewards accumulate over time and will be distributed via airdrop in the future.
+
+### Quick Start
+
+1. **Deploy Staking Contracts**
+   ```bash
+   cd contracts
+   npm run deploy:staking
+   ```
+
+2. **Add USDC Pairs to Staking**
+   ```bash
+   npm run add-usdc-pools
+   ```
+
+3. **Update Frontend Config**
+   - Add `DOA_TOKEN_ADDRESS` and `STAKING_REWARDS_ADDRESS` to `src/config/dex.ts`
+
+4. **Set Up Database**
+   - Run `supabase-staking-schema.sql` in Supabase SQL Editor
+
+5. **Configure Indexer**
+   - Add `STAKING_REWARDS_ADDRESS` environment variable to Railway indexer
+
+### Features
+
+- **1.5 DOA/sec** reward rate for all USDC pairs
+- **Automatic Pool Detection**: All USDC pairs automatically added
+- **Real-time Tracking**: Indexer updates staking data every 30 minutes
+- **Future Airdrop**: Rewards accumulate but claiming is disabled for future distribution
+
+### Documentation
+
+- **STAKING_SETUP.md** - Complete staking setup guide
+- **LP_FARMING_EXPLAINED.md** - How LP farming works and APY calculations
+
 ## 📚 Additional Documentation
 
 - **INDEXER_SETUP.md** - Detailed indexer setup guide
+- **STAKING_SETUP.md** - LP farming/staking setup guide
+- **LP_FARMING_EXPLAINED.md** - LP farming mechanics and APY calculations
 - **SECURITY_ANALYSIS.md** - Security considerations
 - **contracts/CUSTOM_DEX_EXPLANATION.md** - DEX math explanation
 - **contracts/CustomDEX_Guide.md** - Custom DEX guide

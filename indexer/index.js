@@ -120,6 +120,24 @@ const KNOWN_TOKENS = {
   
 };
 
+// Import staking indexer module
+const {
+  processStakingEvents,
+  startContinuousStakingIndexer,
+  indexStakingData,
+  STAKING_REWARDS_ABI,
+} = require('./stakingIndexer');
+
+// StakingRewards contract address (set via environment variable)
+const STAKING_REWARDS_ADDRESS = process.env.STAKING_REWARDS_ADDRESS || '';
+
+// Log staking configuration on startup
+if (STAKING_REWARDS_ADDRESS) {
+  console.log('✓ StakingRewards address configured:', STAKING_REWARDS_ADDRESS);
+} else {
+  console.log('⚠️ STAKING_REWARDS_ADDRESS not set - staking indexing will be skipped');
+}
+
 // Environment variables
 const HTTP_RPC_URL = process.env.HTTP_RPC_URL || process.env.RPC_URL || 'https://rpc.testnet.arc.network';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
@@ -174,6 +192,7 @@ console.log('\n=== Indexer Configuration ===');
 console.log('HTTP_RPC_URL:', HTTP_RPC_URL ? HTTP_RPC_URL : 'MISSING');
 console.log('SUPABASE_URL:', SUPABASE_URL ? 'SET (' + SUPABASE_URL.substring(0, 30) + '...)' : 'MISSING');
 console.log('SUPABASE_KEY:', SUPABASE_KEY ? 'SET (' + SUPABASE_KEY.substring(0, 20) + '...)' : 'MISSING');
+console.log('STAKING_REWARDS_ADDRESS:', STAKING_REWARDS_ADDRESS ? 'SET (' + STAKING_REWARDS_ADDRESS + ')' : 'MISSING');
 console.log('Supabase client:', supabase ? '✓ INITIALIZED' : '✗ NOT INITIALIZED');
 console.log('HTTP RPC client:', rpcClient ? '✓ INITIALIZED' : '✗ NOT INITIALIZED');
 console.log('============================\n');
@@ -181,9 +200,11 @@ console.log('============================\n');
 // Track known pools
 const knownPools = new Set();
 let lastProcessedBlock = null;
+let lastStakingEventBlock = null; // Track last processed block for staking events separately
 let lastMaterializedViewRefresh = null; // Track when we last refreshed materialized views
 let lastPoolVolume24hRefresh = null; // Track when we last refreshed pool_volume_24h (hourly)
 let lastPoolFeesTotalRefresh = null; // Track when we last refreshed pool_fees_total (daily)
+let lastStakingIndexRefresh = null; // Track when we last indexed staking data (every 1 minute for testing)
 
 
 /**
@@ -447,6 +468,7 @@ async function getTokenPriceInUSD(tokenAddress, pools) {
   return 0; // Unknown price
 }
 
+
 /**
  * Store swap events in Supabase
  * Only stores raw swap events - volume/fees calculated on frontend from USDC amounts
@@ -500,6 +522,7 @@ async function storeSwapEvents(events, pools) {
     console.error('✗ Error storing swap events:', error);
   }
 }
+
 
 /**
  * Main indexing function
@@ -588,6 +611,52 @@ async function index() {
     await storeSwapEvents(allSwapEvents, pools);
   }
 
+  // Process staking events (Staked/Unstaked) if staking contract is configured
+  // CRITICAL: Run continuously and independently to catch events immediately
+  // This runs separately from the main indexer loop to ensure real-time event detection
+  if (STAKING_REWARDS_ADDRESS) {
+    try {
+      // Initialize last staking event block if needed
+      if (!lastStakingEventBlock) {
+        lastStakingEventBlock = currentBlock - BigInt(100);
+        console.log(`📊 Initializing staking event indexer from block ${lastStakingEventBlock} (current: ${currentBlock})`);
+      }
+      
+      // ALWAYS check for new blocks, even if main indexer hasn't seen new blocks yet
+      const stakingFromBlock = lastStakingEventBlock + BigInt(1);
+      let stakingToBlock = currentBlock;
+      
+      // Safety: Limit block range to max 1000 blocks per iteration
+      const MAX_STAKING_BLOCKS = BigInt(1000);
+      if (stakingToBlock - stakingFromBlock > MAX_STAKING_BLOCKS) {
+        console.log(`⚠️ Staking block range too large (${stakingToBlock - stakingFromBlock} blocks), limiting to ${MAX_STAKING_BLOCKS} blocks`);
+        stakingToBlock = stakingFromBlock + MAX_STAKING_BLOCKS;
+      }
+      
+      // Process events if there are new blocks OR if we're catching up
+      if (stakingFromBlock <= stakingToBlock) {
+        console.log(`🔄 Processing staking events from block ${stakingFromBlock} to ${stakingToBlock}`);
+        await processStakingEvents(stakingFromBlock, stakingToBlock, rpcClient, supabase, STAKING_REWARDS_ADDRESS, isRateLimitError);
+        lastStakingEventBlock = stakingToBlock;
+        console.log(`✅ Staking events processed up to block ${stakingToBlock}`);
+      } else {
+        // Even if no new blocks, check recent blocks to catch any missed events
+        // This ensures we catch events even if they happened between indexer runs
+        const recentFromBlock = currentBlock > BigInt(50) ? currentBlock - BigInt(50) : BigInt(0);
+        if (recentFromBlock > lastStakingEventBlock) {
+          console.log(`🔄 Polling recent staking events (checking blocks ${recentFromBlock} to ${currentBlock})...`);
+          await processStakingEvents(recentFromBlock, currentBlock, rpcClient, supabase, STAKING_REWARDS_ADDRESS, isRateLimitError);
+          lastStakingEventBlock = currentBlock;
+        }
+      }
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        throw error; // Re-throw to trigger rate limit handling
+      }
+      console.error('Error processing staking events:', error.message);
+    }
+  }
+
   // ALWAYS update pool reserves from on-chain (even if no swaps happened)
   // This ensures reserves are always fresh when new liquidity is added
   // On-chain is the source of truth - we fetch fresh reserves every poll
@@ -648,6 +717,17 @@ async function index() {
       }
     } catch (error) {
       console.error('Exception refreshing pool_fees_total view:', error);
+    }
+  }
+
+  // Index staking data every 1 minute (for testing - revert to 30 minutes after)
+  const ONE_MINUTE = 1 * 60 * 1000; // 1 minute in milliseconds
+  if (!lastStakingIndexRefresh || (now - lastStakingIndexRefresh) >= ONE_MINUTE) {
+    try {
+      await indexStakingData(rpcClient, supabase, STAKING_REWARDS_ADDRESS);
+      lastStakingIndexRefresh = now;
+    } catch (error) {
+      console.error('Exception indexing staking data:', error);
     }
   }
 }
@@ -867,6 +947,7 @@ async function storePoolData(pools) {
   }
 }
 
+
 /**
  * Test HTTP RPC connection health
  */
@@ -1031,6 +1112,28 @@ async function run() {
     console.log(`✓ HTTP RPC connection healthy (current block: ${rpcHealth.blockNumber})`);
   } else {
     console.warn(`⚠️ HTTP RPC connection test failed: ${rpcHealth.error}`);
+  }
+  
+  // Run staking index on startup (don't wait for first minute)
+  if (STAKING_REWARDS_ADDRESS && supabase) {
+    console.log('🔄 Running initial staking index on startup...');
+    try {
+      await indexStakingData(rpcClient, supabase, STAKING_REWARDS_ADDRESS);
+      lastStakingIndexRefresh = Date.now();
+    } catch (error) {
+      console.error('Exception on initial staking index:', error);
+    }
+    
+    // Start continuous staking event indexer (runs independently in parallel)
+    console.log('🚀 Starting continuous staking event indexer...');
+    startContinuousStakingIndexer(rpcClient, supabase, STAKING_REWARDS_ADDRESS, isRateLimitError).catch((error) => {
+      console.error('❌ Continuous staking indexer error:', error);
+    });
+  } else {
+    console.log('⚠️ Skipping initial staking index:', {
+      hasAddress: !!STAKING_REWARDS_ADDRESS,
+      hasSupabase: !!supabase
+    });
   }
   
   let consecutiveErrors = 0;

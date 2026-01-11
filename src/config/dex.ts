@@ -27,6 +27,12 @@ export const DEX_CONFIG = {
   // Note: Pools are now fetched dynamically from the factory contract
   // No need for hardcoded pool addresses
   
+  // DOA Token (reward token for staking/farming)
+  DOA_TOKEN_ADDRESS: "0x0484c8a0A27dCDDb0CC913390DC7fa34358a823D" as `0x${string}`,
+  
+  // Staking Rewards Contract (for LP farming)
+  STAKING_REWARDS_ADDRESS: "0x814b2b51c0A2d1Ba932A2D16e73de1C3cABc3BC1" as `0x${string}`,
+  
   // Network Info
   CHAIN_ID: 5042002,
   EXPLORER_URL: "https://testnet.arcscan.app",

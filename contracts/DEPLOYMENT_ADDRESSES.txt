@@ -1,7 +1,7 @@
 {
   "network": "arc-testnet",
   "chainId": 5042002,
-  "deployedAt": "2025-11-13T21:18:34.910Z",
+  "deployedAt": "2026-01-11T06:38:18.649Z",
   "deployer": "0xd67F44f3CAD319fBb0308Dfb3bF2e1B31D4a93b6",
   "tokens": {
     "KITTY": {
@@ -17,6 +17,34 @@
       "address": "0x832Fa4331050045F911bD6d59EAD144A04B965cB",
       "decimals": 18,
       "totalSupply": "10000000"
+    }
+  },
+  "doaToken": {
+    "name": "Defi on Arc",
+    "symbol": "DOA",
+    "address": "0x0484c8a0A27dCDDb0CC913390DC7fa34358a823D",
+    "decimals": 18,
+    "totalSupply": "10000000"
+  },
+  "stakingRewards": {
+    "address": "0x814b2b51c0A2d1Ba932A2D16e73de1C3cABc3BC1",
+    "rewardToken": "0x0484c8a0A27dCDDb0CC913390DC7fa34358a823D"
+  },
+  "staking": {
+    "network": "arc-testnet",
+    "chainId": 5042002,
+    "deployedAt": "2026-01-11T06:38:18.649Z",
+    "deployer": "0xd67F44f3CAD319fBb0308Dfb3bF2e1B31D4a93b6",
+    "doaToken": {
+      "name": "Defi on Arc",
+      "symbol": "DOA",
+      "address": "0x0484c8a0A27dCDDb0CC913390DC7fa34358a823D",
+      "decimals": 18,
+      "totalSupply": "10000000"
+    },
+    "stakingRewards": {
+      "address": "0x814b2b51c0A2d1Ba932A2D16e73de1C3cABc3BC1",
+      "rewardToken": "0x0484c8a0A27dCDDb0CC913390DC7fa34358a823D"
     }
   }
 }

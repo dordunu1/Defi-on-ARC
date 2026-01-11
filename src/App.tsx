@@ -10,6 +10,8 @@ import Navigation from './components/Navigation';
 import Swap from './components/Swap';
 import Pools from './components/Pools';
 import CreatePool from './components/CreatePool';
+import Farming from './components/Farming';
+import StakingAdmin from './components/StakingAdmin';
 import MaintenancePage from './components/MaintenancePage';
 import XFollowFAB from './components/XFollowFAB';
 import DiscordWidget from './components/DiscordWidget';
@@ -125,6 +127,8 @@ function AppContent() {
               <Route path="/swap" element={<Swap />} />
               <Route path="/pools" element={<Pools />} />
               <Route path="/create-pool" element={<CreatePool />} />
+              <Route path="/farming" element={<Farming />} />
+              <Route path="/admin" element={<StakingAdmin />} />
               <Route path="*" element={<Navigate to="/bridge" replace />} />
             </Routes>
           </div>

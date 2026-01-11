@@ -4,7 +4,7 @@ import { formatUnits, parseUnits, type Address, isAddress } from 'viem';
 import { DEX_CONFIG } from '../config/dex';
 import { ERC20_ABI, POOL_ABI, FACTORY_ABI, ROUTER_ABI } from '../config/abis';
 
-export type TokenSymbol = 'SRAC' | 'RACS' | 'SACS' | 'USDC' | 'EURC' | 'KITTY' | 'DOGG';
+export type TokenSymbol = 'SRAC' | 'RACS' | 'SACS' | 'USDC' | 'EURC' | 'KITTY' | 'DOGG' | 'DOA';
 
 export interface TokenInfo {
   symbol: TokenSymbol;
@@ -25,6 +25,7 @@ export const TOKENS: Record<TokenSymbol, TokenInfo> = {
   EURC: { symbol: 'EURC', address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a' as Address, decimals: 6 }, // EURC uses 6 decimals
   KITTY: { symbol: 'KITTY', address: DEX_CONFIG.TOKENS.KITTY as Address, decimals: 18 },
   DOGG: { symbol: 'DOGG', address: DEX_CONFIG.TOKENS.DOGG as Address, decimals: 18 },
+  DOA: { symbol: 'DOA', address: (DEX_CONFIG.DOA_TOKEN_ADDRESS || '0x0000000000000000000000000000000000000000') as Address, decimals: 18 }, // DOA token (reward token)
 };
 
 // Get pool address for a token pair from factory
