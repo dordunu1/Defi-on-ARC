@@ -11,6 +11,24 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-01-11',
+    version: 'v2.4.0',
+    changes: [
+      '🌾 Introduced LP Farming (Liquidity Mining) - Stake your LP tokens to earn DOA rewards',
+      'Added comprehensive Farming UI with glassmorphism design and orange-themed styling',
+      'Implemented StakingRewards smart contract supporting multi-pool staking with configurable emission rates',
+      'Created DOA (Defi on Arc) reward token for farming incentives',
+      'Added real-time staking data via Supabase indexer with instant event detection',
+      'Implemented APY calculations for all staking pools with smart formatting for high yields',
+      'Added Farming tab to navigation with three sections: All Pools, Stake, and Unstake',
+      'Optimized RPC calls by reducing polling frequency and using Supabase for data fetching',
+      'Added progress modals for approve/stake flow with step-by-step indicators',
+      'Implemented future claim system for accumulated rewards (claiming disabled, rewards tracked)',
+      'Added support for 6 USDC-paired LP pools: USDC/SRAC, USDC/EURC, USDC/RACS, USDC/SACS, USDC/DOGG, USDC/KITTY',
+      'Mobile-responsive farming interface with grid and list view modes',
+    ],
+  },
+  {
     date: '2025-12-18',
     version: 'v2.3.0',
     changes: [
