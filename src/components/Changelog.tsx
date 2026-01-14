@@ -15,6 +15,8 @@ const CHANGELOG: ChangelogEntry[] = [
     version: 'v2.4.0',
     changes: [
       '🌾 Introduced LP Farming (Liquidity Mining) - Stake your LP tokens to earn DOA rewards',
+      'Updated @circle-fin/bridge-kit to v1.3.0 - Enhanced estimate response with full transfer context (token, amount, source, destination)',
+      'Added Circle Bridge Kit error-handling helpers and constants for consistent error handling',
       'Added comprehensive Farming UI with glassmorphism design and orange-themed styling',
       'Implemented StakingRewards smart contract supporting multi-pool staking with configurable emission rates',
       'Created DOA (Defi on Arc) reward token for farming incentives',
