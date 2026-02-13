@@ -11,6 +11,21 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-02-13',
+    version: 'v2.5.0',
+    changes: [
+      '🌉 Bridge: Switched to Circle CCTP Forwarding Service (no Bridge Kit)',
+      'Bridge now uses depositForBurnWithHook + Circle Forwarding so you only need gas on the source chain',
+      'Added four CCTP testnet chains: Sepolia, Avalanche Fuji, Base Sepolia, Arc Testnet',
+      'From/To chain dropdowns and swap button; any supported chain pair can be selected',
+      'Updated Docs → Bridge section with Forwarding Service flow, contract addresses, and API (sourceChainId/destChainId)',
+      'Chain icons use public SVGs: ethereum.svg, base.svg, avalanche.svg, arc.svg',
+      'Fixed bridge progress step labels (Approve vs Burn) so UI matches MetaMask transaction type',
+      'Avalanche Fuji RPC set to Alchemy endpoint (avax-fuji.g.alchemy.com)',
+      'Burn transaction uses explicit gas limit to avoid "exceeds max transaction gas limit" on some RPCs',
+    ],
+  },
+  {
     date: '2026-01-11',
     version: 'v2.4.0',
     changes: [

@@ -65,149 +65,82 @@ Ready to dive in? Explore the documentation to understand the technical architec
     title: 'Bridge',
     content: `# Bridge
 
-The DeFi on ARC bridge utilizes **Circle Bridge Kit** to enable seamless token transfers between Ethereum Sepolia and Arc Testnet.
+The DeFi on ARC bridge uses **Circle CCTP (Cross-Chain Transfer Protocol)** with the **Forwarding Service** to move USDC between testnets. Circle executes the mint on the destination chain, so you only need gas on the source chain.
 
-## What is Circle Bridge Kit?
-
-Circle Bridge Kit is a production-ready SDK that simplifies cross-chain token transfers. It handles the entire bridging process including approvals, transfers, attestations, and destination chain minting.
+Reference: [Transfer USDC with the Forwarding Service](https://developers.circle.com/cctp/howtos/transfer-usdc-with-forwarding-service)
 
 ## Supported Chains
 
-- **Ethereum Sepolia** (Chain ID: 11155111) - Source/Destination
-- **Arc Testnet** (Chain ID: 5042002) - Source/Destination
+- **Ethereum Sepolia** (Chain ID: 11155111)
+- **Avalanche Fuji** (Chain ID: 43113)
+- **Base Sepolia** (Chain ID: 84532)
+- **Arc Testnet** (Chain ID: 5042002)
+
+You can bridge **from any of these chains to any other** (same chain is not allowed).
 
 ## Supported Tokens
 
-Currently, only **USDC** is supported for bridging:
+Only **USDC** is supported (Circle CCTP testnet addresses):
 
-- Sepolia USDC: \`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\`
-- Arc Testnet USDC: \`0x3600000000000000000000000000000000000000\`
+- Sepolia: \`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\`
+- Avalanche Fuji: \`0x5425890298aed601595a70ab815c96711a31bc65\`
+- Base Sepolia: \`0x036CbD53842c5426634e7929541eC2318f3dCF7e\`
+- Arc Testnet: \`0x3600000000000000000000000000000000000000\`
 
 ## How It Works
 
-### Bridge Flow
+### Forwarding Service Flow
 
-The bridge process consists of several automated steps:
+1. **Fees**: App fetches CCTP fees from Circle (protocol + forward fee) with \`?forward=true\`.
+2. **Approve**: User approves USDC for the TokenMessenger on the **source** chain (amount = transfer + max fee).
+3. **Burn with hook**: User sends \`depositForBurnWithHook\` on the source chain with Circle's Forwarding Service hook data. Only **source-chain gas** is needed.
+4. **Attestation & mint**: Circle's Forwarding Service handles attestation and submits the mint on the **destination** chain. User receives USDC there with no extra transaction.
 
-1. **Network Switching**: Automatically switches to source chain if needed
-2. **Token Approval**: Approves Bridge Kit contract to spend tokens (if needed)
-3. **Burn/Transfer**: Transfers tokens on source chain (burns on Sepolia, transfers on Arc)
-4. **Attestation**: Circle's attestation service validates the transfer
-5. **Chain Switch**: Automatically switches to destination chain
-6. **Mint/Receive**: Mints or receives tokens on destination chain
+### Progress Steps in UI
 
-### Bidirectional Bridging
-
-The bridge supports transfers in both directions:
-
-- **Sepolia → Arc**: USDC is burned on Sepolia and minted on Arc
-- **Arc → Sepolia**: USDC is transferred on Arc and minted on Sepolia
+- **Step 1 – Approve USDC**: Allow CCTP to spend your USDC.
+- **Step 2 – Burn with hook**: Burn USDC on source chain with Forwarding hook.
+- **Step 3 – Circle attestation**: Circle processes attestation and forwarding.
+- **Step 4 – Mint on destination**: Forwarding Service mints USDC on destination (no user tx).
 
 ## Implementation Details
 
-### Bridge Kit Integration
+### CCTP Contracts
 
-The bridge uses \`@circle-fin/bridge-kit\` and \`@circle-fin/adapter-viem-v2\`:
-
-\`\`\`typescript
-import { BridgeKit } from '@circle-fin/bridge-kit';
-import { createAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
-
-// Create adapter from wallet provider
-const adapter = await createAdapterFromProvider({
-  provider: walletProvider,
-});
-
-// Initialize Bridge Kit
-const kit = new BridgeKit();
-
-// Execute bridge
-const result = await kit.bridge({
-  from: {
-    adapter: adapter,
-    chain: sourceChain,
-  },
-  to: {
-    adapter: adapter,
-    chain: destinationChain,
-  },
-  amount: amount,
-});
-\`\`\`
-
-### Transaction Steps
-
-Bridge Kit returns a result object with a \`steps\` array containing:
-
-- **approve**: Approval transaction (if needed)
-- **burn**: Burn/transfer transaction on source chain
-- **fetchAttestation**: Attestation data retrieval
-- **mint**: Mint/receive transaction on destination chain
+- **TokenMessengerV2** (testnet): \`0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA\` on all supported testnets.
+- **Iris API** (fees & message status): \`https://iris-api-sandbox.circle.com\`
+- **Forwarding hook data**: Magic bytes \`cctp-forward\` + version 0 (see Circle docs).
 
 ### Transaction Hashes
 
-The bridge extracts transaction hashes from the result:
-
-- sourceTxHash: Transaction hash on source chain (from \`burn\` step)
-- receiveTxHash: Transaction hash on destination chain (from \`mint\` step)
+- **sourceTxHash**: Burn transaction on the source chain.
+- **receiveTxHash**: Mint transaction on the destination chain (from \`forwardTxHash\` in the messages API).
 
 ## User Experience
 
-### Automatic Chain Switching
+- **Chain selection**: From/To dropdowns for the four chains; swap button to flip direction.
+- **Auto-suggest**: If the wallet is on a supported chain, it is pre-selected as "From".
+- **Progress modal**: Shows the four steps; "Processing…" matches the current step (e.g. Approve when MetaMask shows approval).
 
-Bridge Kit automatically handles chain switching:
-- Switches to source chain before transfer
-- Switches to destination chain before receive
-- No manual network switching required
+## Error Handling
 
-### Progress Tracking
-
-The bridge tracks progress through states:
-- \`idle\`: Ready to bridge
-- \`switching-network\`: Switching to source chain
-- \`approving\`: Approving token spend
-- \`signing-bridge\`: Signing bridge transaction
-- \`waiting-receive-message\`: Waiting for attestation
-- \`success\`: Bridge completed successfully
-- \`error\`: Bridge failed
-
-### Error Handling
-
-Common errors and solutions:
-
-- **User Rejection**: Transaction cancelled by user
-- **Insufficient Funds**: Not enough tokens or gas
-- **Wrong Token Contract**: Using incorrect USDC address
-- **Network Issues**: RPC connection problems
-
-## Security Features
-
-- **Reentrancy Protection**: All operations are atomic
-- **Attestation Validation**: Circle validates all transfers
-- **Slippage Protection**: Built into Bridge Kit
-- **Transaction Verification**: All transactions verified on-chain
-
-## Gas Costs
-
-Bridge operations require gas on both chains:
-- **Source Chain**: Approval + Transfer/Burn
-- **Destination Chain**: Mint/Receive
-
-Estimated gas costs:
-- **Sepolia → Arc**: ~150,000 gas (Sepolia) + ~100,000 gas (Arc)
-- **Arc → Sepolia**: ~100,000 gas (Arc) + ~150,000 gas (Sepolia)
+- **User Rejection**: Transaction cancelled by user.
+- **Insufficient Funds**: Not enough USDC or gas on source chain.
+- **Exceeds max gas limit**: App uses a fixed gas limit for the burn tx to avoid RPC estimation issues on some testnets.
+- **Network / RPC**: Ensure you're on the correct network and RPC is reachable.
 
 ## Best Practices
 
-1. **Check Balance**: Ensure sufficient tokens and gas on source chain
-2. **Wait for Confirmation**: Don't close browser during bridge
-3. **Verify Transactions**: Check transaction hashes on explorers
-4. **Use Official USDC**: Only use Bridge Kit USDC contracts
-5. **Network Stability**: Ensure stable internet connection
+1. **Gas on source only**: You only need native gas on the chain you're bridging **from**.
+2. **Query fees close to transfer**: Forward fees depend on destination gas; fetch fees just before bridging.
+3. **Use med (or higher) forward fee**: As recommended in Circle's Forwarding Service guide.
+4. **Verify on explorers**: Use the provided links for source and destination tx hashes.
 
 ## Explorer Links
 
 - **Sepolia**: https://sepolia.etherscan.io
+- **Avalanche Fuji**: https://testnet.snowtrace.io
+- **Base Sepolia**: https://sepolia.basescan.org
 - **Arc Testnet**: https://testnet.arcscan.app
 
 ## API Reference
@@ -217,13 +150,11 @@ Estimated gas costs:
 \`\`\`typescript
 const {
   state,
-  tokenBalance,
-  isLoadingBalance,
-  balanceError,
-  fetchTokenBalance,
   bridge,
   reset,
   isOnSepolia,
+  isOnAvalancheFuji,
+  isOnBaseSepolia,
   isOnArc,
   currentChainId,
 } = useBridge();
@@ -235,15 +166,17 @@ const {
 await bridge(
   token: 'USDC',
   amount: string,
-  direction: 'sepolia-to-arc' | 'arc-to-sepolia'
+  sourceChainId: number,  // 11155111 | 43113 | 84532 | 5042002
+  destChainId: number     // same set, must differ from sourceChainId
 );
 \`\`\`
 
-### Fetch Balance
+### State
 
-\`\`\`typescript
-await fetchTokenBalance('USDC', chainId);
-\`\`\``
+- \`state.status\`: \`idle\` | \`bridging\` | \`success\` | \`error\`
+- \`state.currentStep\`: 0–4 (0 = start, 1 = approve, 2 = burn, 3 = attestation, 4 = done)
+- \`state.sourceTxHash\`, \`state.receiveTxHash\`: Explorer links via \`getExplorerTxUrl(chainId, txHash)\`
+- \`state.sourceChainId\`, \`state.destChainId\`: Set during/after bridge`
   },
   overview: {
     title: 'Overview',
@@ -255,7 +188,7 @@ DeFi on ARC consists of four core components working together to provide a compl
 
 ### Core Components
 
-1. **Bridge**: Cross-chain token transfers using Circle Bridge Kit (Sepolia ↔ Arc Testnet)
+1. **Bridge**: Cross-chain USDC transfers using Circle CCTP Forwarding Service (Sepolia, Avalanche Fuji, Base Sepolia ↔ Arc Testnet)
 2. **PoolFactory**: Creates and manages liquidity pools
 3. **SimplePoolWithLP**: Individual liquidity pool contracts with LP token support
 4. **Router**: Enables multi-hop swaps and optimal routing
