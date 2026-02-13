@@ -6,8 +6,20 @@ import { useAccount, useReadContract, usePublicClient } from 'wagmi';
 import { createPublicClient, http, formatUnits, type Address } from 'viem';
 import { sepolia } from 'viem/chains';
 import confetti from 'canvas-confetti';
-import { useBridge, type BridgeToken, CHAIN_TOKENS, SEPOLIA_CHAIN_ID, ARC_CHAIN_ID } from '../hooks/useBridge';
+import {
+  useBridge,
+  type BridgeToken,
+  CHAIN_TOKENS,
+  SEPOLIA_CHAIN_ID,
+  ARC_CHAIN_ID,
+  BASE_SEPOLIA_CHAIN_ID,
+  AVALANCHE_FUJI_CHAIN_ID,
+  CCTP_SUPPORTED_CHAIN_IDS,
+  BRIDGE_CHAIN_NAMES,
+  getExplorerTxUrl,
+} from '../hooks/useBridge';
 import { ARC_RPC_URLS } from '../config/wagmi';
+import { baseSepolia, avalancheFuji } from 'viem/chains';
 
 interface BridgeModalProps {
   isOpen?: boolean;
@@ -24,7 +36,8 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const [amount, setAmount] = useState('');
   const selectedToken: BridgeToken = 'USDC';
-  const [direction, setDirection] = useState<BridgeDirection>('sepolia-to-arc');
+  const [sourceChainId, setSourceChainId] = useState(SEPOLIA_CHAIN_ID);
+  const [destChainId, setDestChainId] = useState(ARC_CHAIN_ID);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [bridgeStartTime, setBridgeStartTime] = useState<number | null>(null);
   const [showProgressModal, setShowProgressModal] = useState(true);
@@ -40,30 +53,23 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const publicClient = usePublicClient();
 
-  useEffect(() => {
-    if (asPage && currentChainId && state.status !== 'success' && !state.direction) {
-      if (currentChainId === ARC_CHAIN_ID) {
-        setDirection('arc-to-sepolia');
-      } else if (currentChainId === SEPOLIA_CHAIN_ID) {
-        setDirection('sepolia-to-arc');
-      }
-    } else if (isOpen && currentChainId && state.status !== 'success' && !state.direction) {
-      if (currentChainId === ARC_CHAIN_ID) {
-        setDirection('arc-to-sepolia');
-      } else if (currentChainId === SEPOLIA_CHAIN_ID) {
-        setDirection('sepolia-to-arc');
-      }
-    }
-  }, [isOpen, asPage, currentChainId, state.status, state.direction]);
+  const activeSourceChainId = state.sourceChainId ?? sourceChainId;
+  const activeDestChainId = state.destChainId ?? destChainId;
+  const sourceChainName = BRIDGE_CHAIN_NAMES[activeSourceChainId] ?? 'Unknown';
+  const destinationChainName = BRIDGE_CHAIN_NAMES[activeDestChainId] ?? 'Unknown';
 
-  const activeDirection = state.direction || direction;
-  const sourceChainId = activeDirection === 'sepolia-to-arc' ? SEPOLIA_CHAIN_ID : ARC_CHAIN_ID;
-  const destinationChainId = activeDirection === 'sepolia-to-arc' ? ARC_CHAIN_ID : SEPOLIA_CHAIN_ID;
-  const sourceChainName = activeDirection === 'sepolia-to-arc' ? 'Sepolia' : 'Arc Testnet';
-  const destinationChainName = activeDirection === 'sepolia-to-arc' ? 'Arc Testnet' : 'Sepolia';
+  useEffect(() => {
+    if (!isOpen && !asPage) return;
+    if (state.status === 'success' || (state.sourceChainId != null && state.destChainId != null)) return;
+    if (currentChainId != null && (CCTP_SUPPORTED_CHAIN_IDS as readonly number[]).includes(currentChainId)) {
+      setSourceChainId(currentChainId);
+      const other = CCTP_SUPPORTED_CHAIN_IDS.filter((id) => id !== currentChainId)[0];
+      if (other != null) setDestChainId(other);
+    }
+  }, [isOpen, asPage, currentChainId, state.status, state.sourceChainId, state.destChainId]);
 
   const sourceTokenInfo = CHAIN_TOKENS[sourceChainId]?.[selectedToken];
-  const destinationTokenInfo = CHAIN_TOKENS[destinationChainId]?.[selectedToken];
+  const destinationTokenInfo = CHAIN_TOKENS[destChainId]?.[selectedToken];
 
   const ERC20_ABI = [
     {
@@ -88,38 +94,35 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const sourcePublicClient = useMemo(() => {
     if (currentChainId === sourceChainId || !sourceTokenInfo) return null;
-
+    const rpcOpts = { retryCount: 2, timeout: 8000 };
     if (sourceChainId === SEPOLIA_CHAIN_ID) {
       return createPublicClient({
         chain: sepolia,
-        transport: http('https://ethereum-sepolia-rpc.publicnode.com', {
-          retryCount: 2,
-          timeout: 8000,
-        }),
+        transport: http('https://ethereum-sepolia-rpc.publicnode.com', rpcOpts),
       });
-    } else if (sourceChainId === ARC_CHAIN_ID) {
+    }
+    if (sourceChainId === AVALANCHE_FUJI_CHAIN_ID) {
+      return createPublicClient({
+        chain: avalancheFuji,
+        transport: http('https://api.avax-test.network/ext/bc/C/rpc', rpcOpts),
+      });
+    }
+    if (sourceChainId === BASE_SEPOLIA_CHAIN_ID) {
+      return createPublicClient({
+        chain: baseSepolia,
+        transport: http('https://sepolia.base.org', rpcOpts),
+      });
+    }
+    if (sourceChainId === ARC_CHAIN_ID) {
       return createPublicClient({
         chain: {
           id: ARC_CHAIN_ID,
           name: 'Arc Testnet',
-          network: 'arc-testnet',
-          nativeCurrency: {
-            decimals: 6,
-            name: 'USDC',
-            symbol: 'USDC',
-          },
-          rpcUrls: {
-            default: { http: ARC_RPC_URLS },
-            public: { http: ARC_RPC_URLS },
-          },
-          blockExplorers: {
-            default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
-          },
+          nativeCurrency: { decimals: 6, name: 'USDC', symbol: 'USDC' },
+          rpcUrls: { default: { http: ARC_RPC_URLS }, public: { http: ARC_RPC_URLS } },
+          blockExplorers: { default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' } },
         },
-        transport: http(ARC_RPC_URLS[0], {
-          retryCount: 2,
-          timeout: 8000,
-        }),
+        transport: http(ARC_RPC_URLS[0], rpcOpts),
       });
     }
     return null;
@@ -173,42 +176,39 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const destinationPublicClient = useMemo(() => {
     if (!destinationTokenInfo) return null;
-
-    if (destinationChainId === SEPOLIA_CHAIN_ID) {
+    const rpcOpts = { retryCount: 2, timeout: 8000 };
+    if (destChainId === SEPOLIA_CHAIN_ID) {
       return createPublicClient({
         chain: sepolia,
-        transport: http('https://ethereum-sepolia-rpc.publicnode.com', {
-          retryCount: 2,
-          timeout: 8000,
-        }),
+        transport: http('https://ethereum-sepolia-rpc.publicnode.com', rpcOpts),
       });
-    } else if (destinationChainId === ARC_CHAIN_ID) {
+    }
+    if (destChainId === AVALANCHE_FUJI_CHAIN_ID) {
+      return createPublicClient({
+        chain: avalancheFuji,
+        transport: http('https://api.avax-test.network/ext/bc/C/rpc', rpcOpts),
+      });
+    }
+    if (destChainId === BASE_SEPOLIA_CHAIN_ID) {
+      return createPublicClient({
+        chain: baseSepolia,
+        transport: http('https://sepolia.base.org', rpcOpts),
+      });
+    }
+    if (destChainId === ARC_CHAIN_ID) {
       return createPublicClient({
         chain: {
           id: ARC_CHAIN_ID,
           name: 'Arc Testnet',
-          network: 'arc-testnet',
-          nativeCurrency: {
-            decimals: 6,
-            name: 'USDC',
-            symbol: 'USDC',
-          },
-          rpcUrls: {
-            default: { http: ARC_RPC_URLS },
-            public: { http: ARC_RPC_URLS },
-          },
-          blockExplorers: {
-            default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
-          },
+          nativeCurrency: { decimals: 6, name: 'USDC', symbol: 'USDC' },
+          rpcUrls: { default: { http: ARC_RPC_URLS }, public: { http: ARC_RPC_URLS } },
+          blockExplorers: { default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' } },
         },
-        transport: http(ARC_RPC_URLS[0], {
-          retryCount: 2,
-          timeout: 8000,
-        }),
+        transport: http(ARC_RPC_URLS[0], rpcOpts),
       });
     }
     return null;
-  }, [destinationChainId, destinationTokenInfo]);
+  }, [destChainId, destinationTokenInfo]);
 
   const [destinationBalance, setDestinationBalance] = useState<string>('0');
   const [isLoadingDestinationBalance, setIsLoadingDestinationBalance] = useState(false);
@@ -348,7 +348,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   }, [state.status, state.currentStep, state.receiveTxHash, state.error, state.isLoading]);
 
   const handleBridge = async () => {
-    await bridge(selectedToken, amount, direction);
+    await bridge(selectedToken, amount, sourceChainId, destChainId);
   };
 
   const formatTime = (seconds: number): string => {
@@ -480,10 +480,15 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 }}
               >
                 <p className="text-xs text-gray-500 mb-2">From</p>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <img
-                      src={sourceChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
+                      src={
+                        sourceChainId === SEPOLIA_CHAIN_ID ? "/ethereum.svg"
+                          : sourceChainId === BASE_SEPOLIA_CHAIN_ID ? "/base.svg"
+                            : sourceChainId === AVALANCHE_FUJI_CHAIN_ID ? "/avalanche.svg"
+                              : "/arc.svg"
+                      }
                       alt={sourceChainName}
                       className="w-8 h-8"
                       onError={(e) => {
@@ -495,6 +500,18 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                       <p className="text-xs text-gray-500">Chain ID: {sourceChainId}</p>
                     </div>
                   </div>
+                  <select
+                    value={sourceChainId}
+                    onChange={(e) => setSourceChainId(Number(e.target.value))}
+                    disabled={state.isLoading}
+                    className="text-sm rounded-lg border border-gray-200 bg-white/80 px-2 py-1.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  >
+                    {CCTP_SUPPORTED_CHAIN_IDS.map((id) => (
+                      <option key={id} value={id} disabled={id === destChainId}>
+                        {BRIDGE_CHAIN_NAMES[id]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </motion.div>
 
@@ -502,10 +519,11 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
               <div className="flex items-center justify-center -my-2 relative z-10">
                 <button
                   type="button"
-                  onClick={() => {
-                    setDirection(direction === 'sepolia-to-arc' ? 'arc-to-sepolia' : 'sepolia-to-arc');
-                  }}
                   disabled={state.isLoading}
+                  onClick={() => {
+                    setSourceChainId(destChainId);
+                    setDestChainId(sourceChainId);
+                  }}
                   className="p-3 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     boxShadow: `
@@ -536,10 +554,15 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 }}
               >
                 <p className="text-xs text-gray-500 mb-2">To</p>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <img
-                      src={destinationChainId === SEPOLIA_CHAIN_ID ? "/sepolia.png" : "/Arc.png"}
+                      src={
+                        destChainId === SEPOLIA_CHAIN_ID ? "/ethereum.svg"
+                          : destChainId === BASE_SEPOLIA_CHAIN_ID ? "/base.svg"
+                            : destChainId === AVALANCHE_FUJI_CHAIN_ID ? "/avalanche.svg"
+                              : "/arc.svg"
+                      }
                       alt={destinationChainName}
                       className="w-8 h-8"
                       onError={(e) => {
@@ -548,9 +571,21 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                     />
                     <div>
                       <p className="font-bold text-gray-900">{destinationChainName}</p>
-                      <p className="text-xs text-gray-500">Chain ID: {destinationChainId}</p>
+                      <p className="text-xs text-gray-500">Chain ID: {destChainId}</p>
                     </div>
                   </div>
+                  <select
+                    value={destChainId}
+                    onChange={(e) => setDestChainId(Number(e.target.value))}
+                    disabled={state.isLoading}
+                    className="text-sm rounded-lg border border-gray-200 bg-white/80 px-2 py-1.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  >
+                    {CCTP_SUPPORTED_CHAIN_IDS.map((id) => (
+                      <option key={id} value={id} disabled={id === sourceChainId}>
+                        {BRIDGE_CHAIN_NAMES[id]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </motion.div>
 
@@ -605,7 +640,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                     <div className="text-sm text-yellow-800">
                       <p className="font-medium">Auto-switch to {sourceChainName}</p>
                       <p className="text-xs mt-1">
-                        Bridge Kit will automatically switch your network to {sourceChainName}.
+                        The bridge will automatically switch your network to {sourceChainName} before starting.
                       </p>
                     </div>
                   </div>
@@ -627,12 +662,12 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
               {/* Bridge Button */}
               <motion.button
                 onClick={handleBridge}
-                disabled={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading}
-                className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading
+                disabled={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading || sourceChainId === destChainId}
+                className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading || sourceChainId === destChainId
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
                   }`}
-                style={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : {
+                style={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading || sourceChainId === destChainId ? {} : {
                   boxShadow: `
                     inset 0 2px 4px rgba(255, 255, 255, 0.3),
                     inset 0 -2px 4px rgba(0, 0, 0, 0.2),
@@ -640,8 +675,8 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                     0 2px 4px rgba(0, 0, 0, 0.1)
                   `,
                 }}
-                whileHover={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : { scale: 1.02 }}
-                whileTap={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading ? {} : { scale: 0.98 }}
+                whileHover={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading || sourceChainId === destChainId ? {} : { scale: 1.02 }}
+                whileTap={!isConnected || !amount || parseFloat(amount) <= 0 || state.isLoading || sourceChainId === destChainId ? {} : { scale: 0.98 }}
               >
                 {state.isLoading ? 'Processing...' : `Bridge ${selectedToken}`}
               </motion.button>
@@ -663,11 +698,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 <div className="space-y-2 mb-4">
                   {state.sourceTxHash && (
                     <a
-                      href={
-                        sourceChainId === SEPOLIA_CHAIN_ID
-                          ? `https://sepolia.etherscan.io/tx/${state.sourceTxHash}`
-                          : `https://testnet.arcscan.app/tx/${state.sourceTxHash}`
-                      }
+                      href={getExplorerTxUrl(activeSourceChainId, state.sourceTxHash)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm"
@@ -678,11 +709,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   )}
                   {state.receiveTxHash && (
                     <a
-                      href={
-                        destinationChainId === SEPOLIA_CHAIN_ID
-                          ? `https://sepolia.etherscan.io/tx/${state.receiveTxHash}`
-                          : `https://testnet.arcscan.app/tx/${state.receiveTxHash}`
-                      }
+                      href={getExplorerTxUrl(activeDestChainId, state.receiveTxHash)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center space-x-2 text-orange-600 hover:text-orange-700 text-sm block"
@@ -771,10 +798,10 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
               <div className="space-y-4">
                 {[
-                  { step: 1, title: 'Approve USDC', desc: 'Allow contract to spend tokens' },
-                  { step: 2, title: 'Burn on source', desc: 'Burn tokens on source chain' },
-                  { step: 3, title: 'Attestation', desc: 'Fetch attestation from Circle API' },
-                  { step: 4, title: `Mint on ${destinationChainName}`, desc: 'Mint tokens on destination' },
+                  { step: 1, title: 'Approve USDC', desc: 'Allow CCTP to spend your USDC' },
+                  { step: 2, title: 'Burn with hook', desc: 'Burn USDC on source chain with Forwarding hook' },
+                  { step: 3, title: 'Circle attestation', desc: 'Circle processes attestation & forwarding' },
+                  { step: 4, title: `Mint on ${destinationChainName}`, desc: 'Forwarding Service mints USDC on destination' },
                 ].map((item, idx) => (
                   <motion.div
                     key={item.step}
@@ -792,7 +819,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                   >
                     <div className="flex items-center gap-4">
                       <div className="relative flex-shrink-0">
-                        {state.currentStep >= item.step ? (
+                        {state.currentStep > item.step ? (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -807,7 +834,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                           >
                             <CheckCircle2 className="w-6 h-6 text-white" />
                           </motion.div>
-                        ) : state.currentStep === item.step - 1 ? (
+                        ) : state.currentStep === item.step ? (
                           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
                             style={{
                               boxShadow: `
@@ -833,11 +860,19 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                         )}
                       </div>
                       <div className="flex-1">
-                        <p className={`font-semibold text-sm ${state.currentStep >= item.step ? 'text-orange-600' : state.currentStep === item.step - 1 ? 'text-orange-600' : 'text-gray-500'}`}>
+                        <p className={`font-semibold text-sm ${
+                          state.currentStep > item.step || state.currentStep === item.step
+                            ? 'text-orange-600'
+                            : 'text-gray-500'
+                        }`}>
                           {item.title}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {state.currentStep >= item.step ? 'Completed' : state.currentStep === item.step - 1 ? 'Processing...' : item.desc}
+                          {state.currentStep > item.step
+                            ? 'Completed'
+                            : state.currentStep === item.step
+                              ? 'Processing...'
+                              : item.desc}
                         </p>
                       </div>
                     </div>

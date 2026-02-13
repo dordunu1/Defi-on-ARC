@@ -31,9 +31,10 @@ WHERE LOWER(token_in) = LOWER('0x3600000000000000000000000000000000000000')
 
 -- Materialized view for daily volume and fees (last 90 days)
 -- This stores pre-calculated daily aggregates, so queries just read 90 rows instead of scanning all events
+-- Uses UTC date so 7d/30d/90d period filters (also UTC in get_volume_fees_period) match correctly
 CREATE MATERIALIZED VIEW IF NOT EXISTS volume_fees_daily AS
 SELECT 
-  DATE(timestamp) as date,
+  (timestamp AT TIME ZONE 'UTC')::date as date,
   COALESCE(SUM(
     CASE 
       WHEN LOWER(token_in) = LOWER('0x3600000000000000000000000000000000000000') THEN 
@@ -56,7 +57,7 @@ FROM swap_events
 WHERE (LOWER(token_in) = LOWER('0x3600000000000000000000000000000000000000') 
    OR LOWER(token_out) = LOWER('0x3600000000000000000000000000000000000000'))
   AND timestamp >= NOW() - INTERVAL '90 days'
-GROUP BY DATE(timestamp)
+GROUP BY (timestamp AT TIME ZONE 'UTC')::date
 ORDER BY date ASC;
 
 -- Create indexes on materialized views for faster queries

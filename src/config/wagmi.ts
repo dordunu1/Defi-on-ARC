@@ -1,5 +1,5 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { sepolia } from 'viem/chains';
+import { sepolia, baseSepolia, avalancheFuji } from 'viem/chains';
 
 // Multiple Sepolia RPC endpoints for better reliability and rate limit handling
 // Free tier RPCs have rate limits, so we use multiple fallbacks
@@ -60,10 +60,37 @@ const arcTestnet = {
   },
 } as const;
 
+// Base Sepolia and Avalanche Fuji – CCTP testnets (Circle)
+const baseSepoliaWithCustomRpc = {
+  ...baseSepolia,
+  rpcUrls: {
+    ...baseSepolia.rpcUrls,
+    default: {
+      http: ALCHEMY_API_KEY
+        ? [`https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, 'https://sepolia.base.org']
+        : ['https://sepolia.base.org'],
+    },
+    public: { http: ['https://sepolia.base.org'] },
+  },
+};
+
+const avalancheFujiWithCustomRpc = {
+  ...avalancheFuji,
+  rpcUrls: {
+    ...avalancheFuji.rpcUrls,
+    default: {
+      http: ALCHEMY_API_KEY
+        ? [`https://avalanche-fuji.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, 'https://api.avax-test.network/ext/bc/C/rpc']
+        : ['https://api.avax-test.network/ext/bc/C/rpc'],
+    },
+    public: { http: ['https://api.avax-test.network/ext/bc/C/rpc'] },
+  },
+};
+
 export const config = getDefaultConfig({
   appName: 'Bridge Kit App',
-  projectId: 'ed1deffe285a3c80426c7502b6b773dd', // Replace with your WalletConnect Project ID
-  chains: [sepoliaWithCustomRpc, arcTestnet],
+  projectId: 'ed1deffe285a3c80426c7502b6b773dd',
+  chains: [sepoliaWithCustomRpc, baseSepoliaWithCustomRpc, avalancheFujiWithCustomRpc, arcTestnet],
 });
 
 // Export Arc RPC URLs for use in other components

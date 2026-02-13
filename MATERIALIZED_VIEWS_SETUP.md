@@ -118,6 +118,16 @@ SELECT refresh_all_materialized_views();
 
 ## Troubleshooting
 
+### 7d (or 7-day) volume shows $0 while 30d has data?
+- **Cause**: Date boundaries use UTC so they match the view. If 7d still shows 0, the materialized view may not have been refreshed recently (so "today" and the last few days are missing from the view).
+- **Fix**: Ensure the indexer is running and refreshing views every 10 minutes. Manually refresh: `SELECT refresh_all_materialized_views();`
+- If you updated `volume_fees_daily` to use UTC dates and the view already existed, recreate it in Supabase SQL Editor:
+  ```sql
+  DROP MATERIALIZED VIEW IF EXISTS volume_fees_daily;
+  -- Then run the CREATE MATERIALIZED VIEW from supabase-materialized-views.sql
+  -- Then: REFRESH MATERIALIZED VIEW volume_fees_daily;
+  ```
+
 ### Views not updating?
 - Check indexer logs to ensure refresh is running
 - Verify the `refresh_volume_fees_views()` function exists

@@ -22,20 +22,25 @@ $$ LANGUAGE plpgsql;
 -- OPTIMIZED: Reads from materialized view instead of scanning all swap_events
 -- Pass NULL or 0 for days_back to get ALL TIME data (capped at 90 days from view)
 -- Pass a number (e.g., 30) to get last N days
+-- Uses UTC date boundary so 7d/30d/90d match the view's dates (also UTC)
 CREATE OR REPLACE FUNCTION get_daily_volume_fees(usdc_address TEXT, days_back INTEGER DEFAULT NULL)
 RETURNS TABLE (
   date DATE,
   volume NUMERIC,
   fees NUMERIC
 ) AS $$
+DECLARE
+  utc_cutoff_date DATE;
 BEGIN
+  -- Use UTC so boundary matches volume_fees_daily view (which uses UTC date)
+  utc_cutoff_date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date - COALESCE(NULLIF(days_back, 0), 0);
   RETURN QUERY
   SELECT 
     vfd.date,
     vfd.volume,
     vfd.fees
   FROM volume_fees_daily vfd
-  WHERE (days_back IS NULL OR days_back = 0 OR vfd.date >= CURRENT_DATE - (days_back || ' days')::INTERVAL)
+  WHERE (days_back IS NULL OR days_back = 0 OR vfd.date >= utc_cutoff_date)
   ORDER BY vfd.date ASC;
 END;
 $$ LANGUAGE plpgsql;
@@ -43,18 +48,22 @@ $$ LANGUAGE plpgsql;
 -- Function to get volume and fees for specific time periods
 -- OPTIMIZED: Reads from materialized view instead of scanning all swap_events
 -- Examples: get_volume_fees_period('0x3600...', 7) for 7 days, get_volume_fees_period('0x3600...', 30) for 30 days
+-- Uses UTC date boundary so 7d/30d match the view's dates (also UTC); avoids timezone-related 7d showing 0
 CREATE OR REPLACE FUNCTION get_volume_fees_period(usdc_address TEXT, days_back INTEGER)
 RETURNS TABLE (
   total_volume NUMERIC,
   total_fees NUMERIC
 ) AS $$
+DECLARE
+  utc_cutoff_date DATE;
 BEGIN
+  utc_cutoff_date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date - days_back;
   RETURN QUERY
   SELECT 
     COALESCE(SUM(vfd.volume), 0) as total_volume,
     COALESCE(SUM(vfd.fees), 0) as total_fees
   FROM volume_fees_daily vfd
-  WHERE vfd.date >= CURRENT_DATE - (days_back || ' days')::INTERVAL;
+  WHERE vfd.date >= utc_cutoff_date;
 END;
 $$ LANGUAGE plpgsql;
 
