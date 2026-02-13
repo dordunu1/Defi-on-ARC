@@ -121,7 +121,7 @@ export function useBridge() {
       }
       case AVALANCHE_FUJI_CHAIN_ID: {
         const rpc = ALCHEMY_API_KEY
-          ? `https://avalanche-fuji.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
+          ? `https://avax-fuji.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
           : "https://api.avax-test.network/ext/bc/C/rpc";
         return { chain: avalancheFuji, rpc };
       }
@@ -278,6 +278,10 @@ export function useBridge() {
       const burnTxHash = await walletClient.sendTransaction({
         to: sourceConfig.tokenMessenger,
         data: burnData,
+        // Some RPC providers on testnets can fail gas estimation for
+        // complex contracts with “exceeds max transaction gas limit”.
+        // Use a conservative static gas limit for the burn call.
+        gas: 1_000_000n,
         chain: sourceChain,
       });
       setSourceTxHash(burnTxHash);

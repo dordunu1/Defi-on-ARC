@@ -80,7 +80,7 @@ const avalancheFujiWithCustomRpc = {
     ...avalancheFuji.rpcUrls,
     default: {
       http: ALCHEMY_API_KEY
-        ? [`https://avalanche-fuji.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, 'https://api.avax-test.network/ext/bc/C/rpc']
+        ? [`https://avax-fuji.g.alchemy.com/v2/${ALCHEMY_API_KEY}`, 'https://api.avax-test.network/ext/bc/C/rpc']
         : ['https://api.avax-test.network/ext/bc/C/rpc'],
     },
     public: { http: ['https://api.avax-test.network/ext/bc/C/rpc'] },
