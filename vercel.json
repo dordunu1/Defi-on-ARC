@@ -1,6 +1,10 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://defi-on-arc.org/$1",
+      "permanent": true
+    }
   ]
 }
 
