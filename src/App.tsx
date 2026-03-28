@@ -67,8 +67,12 @@ function AppContent() {
   }, [updateAvailable, forceRefresh]);
 
 
-  // Check if we're on the landing page route
-  const isLandingPage = location.pathname === '/';
+  // Marketing landing lives at /home; / redirects to /bridge so the default URL is the DEX
+  const isLandingPage = location.pathname === '/home';
+
+  if (location.pathname === '/') {
+    return <Navigate to="/bridge" replace />;
+  }
 
   return (
     <>
@@ -90,7 +94,7 @@ function AppContent() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4">
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => navigate('/')}
+                  onClick={() => navigate('/home')}
                   className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition-all shadow-sm"
                   title="Back to Home"
                 >
