@@ -16,6 +16,7 @@ require('dotenv').config();
 const { createPublicClient, http, parseAbiItem } = require('viem');
 const { createClient } = require('@supabase/supabase-js');
 const https = require('https');
+const ws = require('ws');
 
 // DEX Configuration
 const DEX_CONFIG = {
@@ -183,8 +184,12 @@ try {
   throw error;
 }
 
-const supabase = SUPABASE_URL && SUPABASE_KEY 
-  ? createClient(SUPABASE_URL, SUPABASE_KEY)
+const supabase = SUPABASE_URL && SUPABASE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+      realtime: {
+        transport: ws,
+      },
+    })
   : null;
 
 // Log Supabase configuration status on startup

@@ -9,16 +9,21 @@
     "dev": "node index.js",
     "worker": "node index.js"
   },
-  "keywords": ["dex", "indexer", "blockchain", "supabase"],
+  "keywords": [
+    "dex",
+    "indexer",
+    "blockchain",
+    "supabase"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
+    "dotenv": "^16.3.1",
     "viem": "^2.33.3",
-    "dotenv": "^16.3.1"
+    "ws": "^8.20.0"
   },
   "engines": {
     "node": ">=18.0.0"
   }
 }
-
