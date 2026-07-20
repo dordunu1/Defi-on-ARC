@@ -13,7 +13,7 @@ import { createPublicClient, http, formatUnits, parseUnits } from 'viem';
 dotenv.config();
 
 // Arc Testnet RPC
-const RPC_URL = 'https://rpc.testnet.arc.network';
+const RPC_URL = 'https://rpc.blockdaemon.testnet.arc.io';
 
 const publicClient = createPublicClient({
   chain: {

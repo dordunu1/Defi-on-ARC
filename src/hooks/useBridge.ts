@@ -134,7 +134,7 @@ export function useBridge() {
       case ARC_CHAIN_ID: {
         const rpc = ALCHEMY_API_KEY
           ? `https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
-          : "https://rpc.testnet.arc.network";
+          : "https://rpc.blockdaemon.testnet.arc.io";
         const arcChain: Chain = {
           id: ARC_CHAIN_ID,
           name: "Arc Testnet",

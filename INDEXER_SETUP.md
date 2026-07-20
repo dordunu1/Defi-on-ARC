@@ -28,7 +28,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 Create a `.env` file in the root (or use a `.env.local` for Node.js):
 ```env
 # WebSocket URL (choose one from the options)
-WSS_URL=wss://rpc.testnet.arc.network
+WSS_URL=wss://rpc.blockdaemon.testnet.arc.io
 # Or alternatives:
 # WSS_URL=wss://rpc.drpc.testnet.arc.network
 # WSS_URL=wss://rpc.quicknode.testnet.arc.network

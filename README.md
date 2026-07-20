@@ -220,8 +220,8 @@ The indexer listens to blockchain events and stores swap data in Supabase for an
 2. **Set Root Directory** to `/indexer`
 3. **Set Service Type** to "Worker" (NOT "Web Service")
 4. **Add Environment Variables**:
-   - `WSS_URL` = `wss://rpc.testnet.arc.network`
-   - `HTTP_RPC_URL` = `https://rpc.testnet.arc.network` (optional, defaults to Arc RPC)
+   - `WSS_URL` = `wss://rpc.blockdaemon.testnet.arc.io`
+   - `HTTP_RPC_URL` = `https://rpc.blockdaemon.testnet.arc.io` (optional, defaults to Arc RPC)
    - `SUPABASE_URL` = Your Supabase project URL
    - `SUPABASE_ANON_KEY` = Your Supabase anon key
 
@@ -311,12 +311,12 @@ Add Arc Testnet to MetaMask:
 ## 📡 RPC Endpoints
 
 ### Indexer (Arc RPC Only)
-- **HTTP**: `https://rpc.testnet.arc.network`
-- **WebSocket**: `wss://rpc.testnet.arc.network`
+- **HTTP**: `https://rpc.blockdaemon.testnet.arc.io`
+- **WebSocket**: `wss://rpc.blockdaemon.testnet.arc.io`
 
 ### Frontend/Contracts (Optional - Alchemy for higher rate limits)
 - **HTTP**: `https://arc-testnet.g.alchemy.com/v2/API_KEY_HERE` (optional)
-- **Fallback**: `https://rpc.testnet.arc.network`
+- **Fallback**: `https://rpc.blockdaemon.testnet.arc.io`
 
 ## 🔐 Environment Variables
 
@@ -328,8 +328,8 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ### Indexer (Railway/Environment)
 ```env
-WSS_URL=wss://rpc.testnet.arc.network
-HTTP_RPC_URL=https://rpc.testnet.arc.network
+WSS_URL=wss://rpc.blockdaemon.testnet.arc.io
+HTTP_RPC_URL=https://rpc.blockdaemon.testnet.arc.io
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
 ```

@@ -16,8 +16,8 @@ export async function addArcTestnetToWallet(): Promise<void> {
   }
 
   const ethereum = (window as any).ethereum;
-  // Use official Arc Testnet RPC endpoint
-  const RPC_URL = 'https://rpc.testnet.arc.network';
+  // Use Blockdaemon Arc Testnet RPC endpoint
+  const RPC_URL = 'https://rpc.blockdaemon.testnet.arc.io';
 
   try {
     isAddingChain = true;

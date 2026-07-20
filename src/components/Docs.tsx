@@ -1296,7 +1296,7 @@ Or query the factory's \`allPools\` array.
 
 - **Network Name:** Arc Testnet
 - **Chain ID:** 5042002
-- **RPC URL:** https://rpc.testnet.arc.network
+- **RPC URL:** https://rpc.blockdaemon.testnet.arc.io
 - **Explorer:** ${DEX_CONFIG.EXPLORER_URL}
 - **Currency:** USDC (native)
 

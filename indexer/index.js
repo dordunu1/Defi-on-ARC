@@ -140,7 +140,7 @@ if (STAKING_REWARDS_ADDRESS) {
 }
 
 // Environment variables
-const HTTP_RPC_URL = process.env.HTTP_RPC_URL || process.env.RPC_URL || 'https://rpc.testnet.arc.network';
+const HTTP_RPC_URL = process.env.HTTP_RPC_URL || process.env.RPC_URL || 'https://rpc.blockdaemon.testnet.arc.io';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
 const RAILWAY_API_TOKEN = process.env.RAILWAY_API_TOKEN || '';
@@ -159,8 +159,8 @@ const arcTestnet = {
     symbol: 'USDC',
   },
   rpcUrls: {
-    default: { http: ['https://rpc.testnet.arc.network'] },
-    public: { http: ['https://rpc.testnet.arc.network'] },
+    default: { http: ['https://rpc.blockdaemon.testnet.arc.io'] },
+    public: { http: ['https://rpc.blockdaemon.testnet.arc.io'] },
   },
   blockExplorers: {
     default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },

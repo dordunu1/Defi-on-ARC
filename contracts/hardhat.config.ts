@@ -17,7 +17,7 @@ const config: HardhatUserConfig = {
   },
   networks: {
     arcTestnet: {
-      url: "https://rpc.testnet.arc.network",
+      url: process.env.ARC_RPC_URL || "https://rpc.blockdaemon.testnet.arc.io",
       chainId: 5042002,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       gasPrice: "auto", // Let Hardhat automatically determine gas price
